@@ -57,6 +57,7 @@ function showConfirm(title, message, onConfirm) {
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', async () => {
+    loadAppSettings();
     await loadSteps();
     await loadTickets();
     setupEventListeners();
@@ -113,17 +114,54 @@ function setupEventListeners() {
         changeLog = [];
         updateUndoButton();
         resetSaveButton();
+        // sync toggles
+        loadAppSettings();
     });
+    // Toggle handlers
+    const chkCustom = document.getElementById('toggleCustomNumbering');
+    const chkSeq = document.getElementById('toggleSequentialNumbers');
+    if (chkCustom) chkCustom.addEventListener('change', () => { appSettings.customNumbering = chkCustom.checked; saveAppSettings(); });
+    if (chkSeq) chkSeq.addEventListener('change', () => { appSettings.sequentialNumbers = chkSeq.checked; saveAppSettings(); });
 }
 
-// Generate random two-digit ticket number
-function generateRandomTicketNumber() {
-    let number;
-    do {
-        number = Math.floor(Math.random() * 90) + 10; // Random number between 10-99
-    } while (usedTicketNumbers.has(number));
-    usedTicketNumbers.add(number);
-    return number;
+// Settings (persisted)
+let appSettings = { customNumbering: false, sequentialNumbers: false };
+function loadAppSettings() {
+    try {
+        const raw = localStorage.getItem('tmSettings');
+        if (raw) appSettings = Object.assign(appSettings, JSON.parse(raw));
+    } catch {}
+    // sync UI if present
+    const chkCustom = document.getElementById('toggleCustomNumbering');
+    const chkSeq = document.getElementById('toggleSequentialNumbers');
+    if (chkCustom) chkCustom.checked = !!appSettings.customNumbering;
+    if (chkSeq) chkSeq.checked = !!appSettings.sequentialNumbers;
+}
+function saveAppSettings() {
+    localStorage.setItem('tmSettings', JSON.stringify(appSettings));
+}
+
+// Generate ticket number based on settings
+function generateNewTicketNumber() {
+    if (appSettings.sequentialNumbers) {
+        // Next integer after current max
+        let max = 0;
+        usedTicketNumbers.forEach(n => { if (typeof n === 'number' && n > max) max = n; });
+        const next = max + 1 || 1;
+        usedTicketNumbers.add(next);
+        return next;
+    } else {
+        // Default: random two-digit unique (10-99)
+        let number;
+        let guard = 0;
+        do {
+            number = Math.floor(Math.random() * 90) + 10;
+            guard++;
+            if (guard > 500) break; // fail-safe
+        } while (usedTicketNumbers.has(number));
+        usedTicketNumbers.add(number);
+        return number;
+    }
 }
 
 // Load all tickets from database
@@ -160,7 +198,7 @@ async function loadSteps() {
 async function addTicket() {
     try {
         const ticketData = {
-            ticket_number: generateRandomTicketNumber(),
+            ticket_number: generateNewTicketNumber(),
             color: 'white',
             notes: '',
             current_step_id: steps.length > 0 ? steps[0].id : null
@@ -1054,7 +1092,15 @@ function renderTickets() {
         const row = document.getElementById(`ticket-${ticket.id}`);
         
         // Setup sliding quick color picker
-        setupSlidingColorPicker(row, ticket);
+        setupSlidingQuickPicker(row, ticket);
+
+        // Editable ticket number when enabled
+        const numEl = row.querySelector('.ticket-number');
+        if (numEl && appSettings.customNumbering) {
+            numEl.style.cursor = 'text';
+            numEl.title = 'Click to edit number';
+            numEl.addEventListener('click', () => startEditTicketNumber(ticket.id));
+        }
         
         // Notes update
         const notesTextarea = row.querySelector('.ticket-notes');
@@ -1308,6 +1354,49 @@ function setupSlidingColorPicker(row, ticket) {
         paletteWrap.style.maxWidth = computeExpandedWidth() + 'px';
         // prevent dragging while expanded
         row.classList.add('no-drag');
+    });
+}
+
+// Start editing ticket number
+function startEditTicketNumber(ticketId) {
+    const row = document.getElementById(`ticket-${ticketId}`);
+    if (!row) return;
+    const display = row.querySelector('.ticket-number');
+    if (!display) return;
+    const current = display.textContent.trim();
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.className = 'ticket-number-input';
+    input.value = parseInt(current, 10);
+    display.replaceWith(input);
+    input.focus();
+
+    const finish = async (save) => {
+        if (save) {
+            const newNum = parseInt(input.value, 10);
+            if (Number.isNaN(newNum) || newNum <= 0) { showError('Enter a positive number.'); return; }
+            if (usedTicketNumbers.has(newNum)) { showError('That number is already in use.'); return; }
+            // Update server
+            try {
+                await updateTicket(ticketId, { ticket_number: newNum });
+                usedTicketNumbers.add(newNum);
+                // Remove old number from set
+                // find old
+                const t = tickets.find(t => t.id === ticketId);
+                if (t) usedTicketNumbers.delete(t.ticket_number);
+                // Update local
+                const ticket = tickets.find(t => t.id === ticketId);
+                if (ticket) ticket.ticket_number = newNum;
+            } catch (e) { showError('Failed to update ticket number.'); }
+        }
+        // Re-render to restore view
+        renderTickets();
+    };
+
+    input.addEventListener('blur', () => finish(true));
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') finish(true);
+        if (e.key === 'Escape') finish(false);
     });
 }
 

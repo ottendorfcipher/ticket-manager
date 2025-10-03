@@ -102,7 +102,7 @@ app.post('/api/tickets', (req, res) => {
 // Update ticket
 app.put('/api/tickets/:id', (req, res) => {
     try {
-        const { color, notes, current_step_id } = req.body;
+        const { color, notes, current_step_id, ticket_number } = req.body;
         const updates = [];
         const values = [];
         
@@ -117,6 +117,10 @@ app.put('/api/tickets/:id', (req, res) => {
         if (current_step_id !== undefined) {
             updates.push('current_step_id = ?');
             values.push(current_step_id);
+        }
+        if (ticket_number !== undefined) {
+            updates.push('ticket_number = ?');
+            values.push(ticket_number);
         }
         
         updates.push('updated_at = CURRENT_TIMESTAMP');
