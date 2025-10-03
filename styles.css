@@ -267,13 +267,35 @@ body {
 
 /* The visible selected color circle */
 .selected-color-circle {
-    width: 26px; /* slightly bigger */
-    height: 26px;
+    width: 24px; /* same size as palette circles */
+    height: 24px;
     border-radius: 50%;
     position: relative;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
     flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: visible;
 }
+
+/* Selected icon overlay */
+.selected-icon {
+    width: 16px;
+    height: 16px;
+    pointer-events: none;
+}
+
+/* Disable any previous arc overlays */
+.selected-color-circle::before,
+.selected-color-circle::after {
+    content: none !important;
+    display: none !important;
+}
+
+/* Disable previous flash ring, keep compatibility */
+.selected-color-circle .flash-ring,
+.selected-color-circle .flash-ring.pulse { display: none !important; }
 
 /* Two dark-grey arcs with small gaps at top (90deg) and bottom (270deg) */
 .selected-color-circle::after {

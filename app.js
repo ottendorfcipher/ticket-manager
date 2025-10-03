@@ -1014,15 +1014,16 @@ function setupSlidingColorPicker(row, ticket) {
     const picker = row.querySelector('.quick-color-picker');
     if (!picker) return;
     
-    // Create the selected color circle (current color)
+    // Create the selected color circle (current color + icon overlay)
     const selectedCircle = document.createElement('div');
     selectedCircle.className = 'selected-color-circle';
     selectedCircle.style.backgroundColor = ticket.color.startsWith('#') ? ticket.color : getColorValue(ticket.color);
     selectedCircle.title = 'Current color - hover to change';
-    // Add pulse ring element for click feedback
-    const flashRing = document.createElement('span');
-    flashRing.className = 'flash-ring';
-    selectedCircle.appendChild(flashRing);
+    const icon = document.createElement('img');
+    icon.src = 'assets/selected-icon.svg';
+    icon.alt = 'selected';
+    icon.className = 'selected-icon';
+    selectedCircle.appendChild(icon);
     
     // Create the expanded palette (hidden by default) inside a wrapper to control clipping
     const paletteWrap = document.createElement('div');
@@ -1072,17 +1073,6 @@ function setupSlidingColorPicker(row, ticket) {
             circle.dataset.clicked = 'true';
             changeTicketColor(ticket.id, color);
             selectedCircle.style.backgroundColor = (typeof color === 'string' && color.startsWith('#')) ? color : getColorValue(color);
-            // Trigger right-arc flash animation
-            selectedCircle.classList.remove('flash');
-            // force reflow to restart animation if already applied
-            // eslint-disable-next-line no-unused-expressions
-            selectedCircle.offsetWidth;
-            selectedCircle.classList.add('flash');
-            // Trigger pulse ring
-            flashRing.classList.remove('pulse');
-            // eslint-disable-next-line no-unused-expressions
-            flashRing.offsetWidth;
-            flashRing.classList.add('pulse');
         });
         
         palette.appendChild(circle);
