@@ -248,15 +248,17 @@ body {
     justify-content: flex-end;
     gap: 8px;
     overflow: visible; /* allow animations and circles to render outside */
-    min-height: 34px; /* ensure circles are not clipped vertically */
-    padding: 4px 0; /* small vertical padding */
+    min-height: 40px; /* ensure circles are not clipped vertically (accounts for 1.2 scale) */
+    padding: 6px 0; /* small vertical padding */
 }
 
 /* Palette wrap manages horizontal reveal */
 .palette-wrap {
-    overflow: hidden;
+    overflow-x: hidden;  /* clip horizontally */
+    overflow-y: visible; /* do not clip vertical hover scale */
     max-width: 0;
     transition: max-width 0.25s ease;
+    min-height: 34px; /* ensure full circle height within wrapper */
 }
 
 /* Expanded state is controlled via JS by setting palette wrap max-width */
