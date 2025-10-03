@@ -68,8 +68,28 @@ function setupEventListeners() {
     document.getElementById('addStepBtn').addEventListener('click', addStep);
     document.getElementById('saveStepsBtn').addEventListener('click', saveAllSteps);
     document.getElementById('exportSettingsBtn').addEventListener('click', exportSettings);
-    document.getElementById('importSettingsBtn').addEventListener('click', () => {
-        document.getElementById('importFileInput').click();
+    
+    // Hover to open menus: already handled by CSS, but ensure click closes
+    document.querySelectorAll('.export-menu-toggle, .import-menu-toggle').forEach(t => {
+        t.addEventListener('click', (e) => e.preventDefault());
+    });
+
+    // Export menu options
+    document.querySelectorAll('.export-option').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const type = btn.dataset.exportType; // 'configuration' or 'notes'
+            const format = btn.dataset.exportFormat; // 'json','toml','csv','pdf','docx'
+            openExportPreview(type, format);
+        });
+    });
+
+    // Import menu options
+    document.querySelectorAll('.import-option').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const type = btn.dataset.importType; // 'configuration' or 'notes'
+            const format = btn.dataset.importFormat; // 'json','toml'
+            beginImportFlow(type, format);
+        });
     });
     document.getElementById('importFileInput').addEventListener('change', importSettings);
     // Undo button removed from UI
@@ -646,18 +666,157 @@ function resetSaveButton() {
     }
 }
 
-// Export settings to JSON
-function exportSettings() {
-    const settings = {
+// ======================
+// Export/Import Utilities
+// ======================
+
+let pendingExport = null; // {type, format, content, blobBuilder}
+let currentImportContext = null; // {type, format}
+
+// Build configuration object
+function buildConfigurationData() {
+    return {
         steps: steps,
         customColors: customColors,
         exportDate: new Date().toISOString()
     };
-    
+}
+
+// Build notes data
+function buildNotesData() {
+    return tickets.map(t => ({
+        ticket_number: t.ticket_number,
+        step: steps.find(s => s.id === t.current_step_id)?.name || '',
+        notes: t.notes || ''
+    }));
+}
+
+function toToml(obj) {
+    // Minimal TOML generator for our shapes
+    const lines = [];
+    if (obj.steps) {
+        lines.push('[steps]');
+        obj.steps.forEach((s, i) => {
+            lines.push(`[[steps.items]]`);
+            lines.push(`id = ${s.id}`);
+            lines.push(`name = "${(s.name || '').replace(/"/g,'\\"')}"`);
+            lines.push(`order_index = ${s.order_index}`);
+        });
+    }
+    if (obj.customColors) {
+        lines.push(`customColors = [${obj.customColors.map(c => `"${c}"`).join(', ')}]`);
+    }
+    if (obj.exportDate) lines.push(`exportDate = "${obj.exportDate}"`);
+    return lines.join('\n');
+}
+
+function notesToCsv(rows) {
+    const esc = (v) => '"' + String(v ?? '').replace(/"/g,'""').replace(/\n/g,'\\n') + '"';
+    const header = ['ticket_number','step','notes'];
+    const lines = [header.join(',')];
+    rows.forEach(r => lines.push([r.ticket_number, esc(r.step), esc(r.notes)].join(',')));
+    return lines.join('\n');
+}
+
+function openExportPreview(type, format) {
+    const previewModal = new bootstrap.Modal(document.getElementById('previewModal'));
+    const pre = document.getElementById('previewContent');
+    const htmlDiv = document.getElementById('previewHtmlContent');
+    document.getElementById('previewModalTitle').textContent = `Preview ${type} as ${format.toUpperCase()}`;
+
+    let content = '';
+    pendingExport = { type, format, content: null, blobBuilder: null };
+
+    if (type === 'configuration') {
+        const data = buildConfigurationData();
+        if (format === 'json') {
+            content = JSON.stringify(data, null, 2);
+            pendingExport.content = content;
+            pendingExport.blobBuilder = () => new Blob([content], {type:'application/json'});
+            pre.style.display = 'block'; htmlDiv.style.display = 'none';
+            pre.textContent = content;
+        } else if (format === 'toml') {
+            content = toToml(data);
+            pendingExport.content = content;
+            pendingExport.blobBuilder = () => new Blob([content], {type:'application/toml'});
+            pre.style.display = 'block'; htmlDiv.style.display = 'none';
+            pre.textContent = content;
+        }
+    } else if (type === 'notes') {
+        const rows = buildNotesData();
+        if (format === 'csv') {
+            content = notesToCsv(rows);
+            pendingExport.content = content;
+            pendingExport.blobBuilder = () => new Blob([content], {type:'text/csv'});
+            pre.style.display = 'block'; htmlDiv.style.display = 'none';
+            pre.textContent = content;
+        } else if (format === 'pdf') {
+            // Simple text preview and later use jsPDF on download
+            content = rows.map(r => `${r.ticket_number}\t${r.step}\t${r.notes}`).join('\n');
+            pendingExport.content = content;
+            pendingExport.blobBuilder = () => {
+                const { jsPDF } = window.jspdf || {};
+                const doc = new jsPDF({ unit:'pt', format:'a4' });
+                const margin = 40; let y = margin;
+                const lineHeight = 14; const maxWidth = 515; // ~ a4 - margins
+                doc.setFontSize(12);
+                const lines = doc.splitTextToSize(content, maxWidth);
+                lines.forEach(line => { if (y > 770) { doc.addPage(); y = margin; } doc.text(line, margin, y); y += lineHeight; });
+                return doc.output('blob');
+            };
+            pre.style.display = 'block'; htmlDiv.style.display = 'none';
+            pre.textContent = content;
+        } else if (format === 'docx') {
+            // Simple paragraph document
+            content = rows.map(r => `${r.ticket_number}\t${r.step}\t${r.notes}`).join('\n');
+            pendingExport.content = content;
+            pendingExport.blobBuilder = async () => {
+                const docx = window.docx;
+                const paragraphs = content.split('\n').map(line => new docx.Paragraph(line));
+                const doc = new docx.Document({ sections: [{ properties: {}, children: paragraphs }] });
+                const blob = await docx.Packer.toBlob(doc);
+                return blob;
+            };
+            pre.style.display = 'block'; htmlDiv.style.display = 'none';
+            pre.textContent = content;
+        }
+    }
+
+    // Bind download
+    const downloadBtn = document.getElementById('confirmExportDownloadBtn');
+    const newBtn = downloadBtn.cloneNode(true);
+    downloadBtn.parentNode.replaceChild(newBtn, downloadBtn);
+    newBtn.addEventListener('click', async () => {
+        if (!pendingExport || !pendingExport.blobBuilder) return;
+        const blob = pendingExport.blobBuilder.constructor.name === 'AsyncFunction' ? await pendingExport.blobBuilder() : pendingExport.blobBuilder();
+        const ext = pendingExport.format;
+        const type = pendingExport.type;
+        const a = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        a.href = url;
+        a.download = `${type}-${new Date().toISOString().split('T')[0]}.${ext}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    });
+
+    previewModal.show();
+}
+
+function beginImportFlow(type, format) {
+    currentImportContext = { type, format };
+    const input = document.getElementById('importFileInput');
+    input.value = '';
+    input.click();
+}
+
+// Existing export (simple JSON) kept for quick action
+function exportSettings() {
+    const settings = buildConfigurationData();
     const dataStr = JSON.stringify(settings, null, 2);
     const blob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
-    
     const a = document.createElement('a');
     a.href = url;
     a.download = `ticket-manager-settings-${new Date().toISOString().split('T')[0]}.json`;
@@ -667,66 +826,96 @@ function exportSettings() {
     URL.revokeObjectURL(url);
 }
 
-// Import settings from JSON
+// Import handler (supports configuration and notes, JSON/TOML)
 async function importSettings(event) {
     const file = event.target.files[0];
     if (!file) return;
-    
     try {
         const text = await file.text();
-        const settings = JSON.parse(text);
-        
-        if (!settings.steps) {
-            showError('Invalid settings file.');
-            return;
+        if (!currentImportContext) {
+            // fallback: configuration JSON
+            const settings = JSON.parse(text);
+            await importConfiguration(settings);
+        } else if (currentImportContext.type === 'configuration') {
+            const settings = currentImportContext.format === 'toml' ? parseConfigurationToml(text) : JSON.parse(text);
+            await importConfiguration(settings);
+        } else if (currentImportContext.type === 'notes') {
+            const notes = currentImportContext.format === 'toml' ? parseNotesToml(text) : JSON.parse(text);
+            await importNotes(notes);
+            showSuccess('Notes imported.');
         }
-        
-        showConfirm(
-            'Import Settings?',
-            'This will replace your current steps and custom colors.',
-            async () => {
-                // Import custom colors
-                if (settings.customColors) {
-                    customColors = settings.customColors;
-                    saveCustomColors();
-                }
-                
-                // Clear existing steps
-                for (const step of steps) {
-                    await deleteStep(step.id);
-                }
-                
-                // Import new steps
-                for (const step of settings.steps) {
-                    await fetch(`${API_URL}/steps`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            name: step.name,
-                            order_index: step.order_index
-                        })
-                    });
-                }
-                
-                // Reload everything
-                await loadSteps();
-                await loadTickets();
-                
-                showSuccess('Settings imported successfully!');
-            }
-        );
     } catch (error) {
-        console.error('Error importing settings:', error);
-        showError('Failed to import settings. Make sure the file is valid JSON.');
+        console.error('Error importing file:', error);
+        showError('Failed to import file. Make sure it is valid.');
     }
-    
     // Reset file input
     event.target.value = '';
 }
 
-// Update ticket notes
-function updateTicketNotes(ticketId, notes) {
-    updateTicket(ticketId, { notes });
+function parseConfigurationToml(text) {
+    if (!window.TOML) return null;
+    try {
+        const parsed = window.TOML.parse(text);
+        const out = { steps: [], customColors: parsed.customColors || [], exportDate: parsed.exportDate || new Date().toISOString() };
+        if (parsed.steps && Array.isArray(parsed.steps.items)) {
+            out.steps = parsed.steps.items.map(it => ({ id: it.id || 0, name: it.name || '', order_index: it.order_index || 0 }));
+        }
+        return out;
+    } catch (e) { console.error('TOML parse error', e); return null; }
+}
+
+function parseNotesToml(text) {
+    if (!window.TOML) return null;
+    try {
+        const parsed = window.TOML.parse(text);
+        if (Array.isArray(parsed.notes)) return parsed.notes;
+        if (parsed.items && Array.isArray(parsed.items)) return parsed.items;
+        return null;
+    } catch (e) { console.error('TOML parse error', e); return null; }
+}
+
+async function importConfiguration(settings) {
+    if (!settings || !settings.steps) { showError('Invalid configuration.'); return; }
+    showConfirm('Import Settings?', 'This will replace your current steps and custom colors.', async () => {
+        // Import custom colors
+        if (settings.customColors) {
+            customColors = settings.customColors;
+            saveCustomColors();
+        }
+        // Clear existing steps
+        for (const step of steps) {
+            await deleteStep(step.id);
+        }
+        // Import new steps
+        for (const step of settings.steps) {
+            await fetch(`${API_URL}/steps`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: step.name, order_index: step.order_index })
+            });
+        }
+        await loadSteps();
+        await loadTickets();
+        showSuccess('Settings imported successfully!');
+    });
+}
+
+async function importNotes(notes) {
+    // Notes items: {ticket_number, step, notes}
+    const stepByName = new Map(steps.map(s => [s.name, s.id]));
+    for (const n of notes) {
+        const t = tickets.find(x => x.ticket_number === n.ticket_number);
+        if (!t) continue;
+        const updates = {};
+        if (typeof n.notes === 'string') { updates.notes = n.notes; t.notes = n.notes; }
+        if (n.step && stepByName.has(n.step)) {
+            const id = stepByName.get(n.step);
+            updates.current_step_id = id; t.current_step_id = id;
+        }
+        if (Object.keys(updates).length) await updateTicket(t.id, updates);
+    }
+    renderTickets();
+}
 }
 
 

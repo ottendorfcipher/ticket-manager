@@ -537,6 +537,16 @@ body {
     padding-top: 16px;
 }
 
+/* Hover dropup menus for Export/Import */
+.export-group:hover .dropdown-menu,
+.import-group:hover .dropdown-menu {
+    display: block;
+}
+.export-menu .dropdown-item,
+.import-menu .dropdown-item {
+    min-width: 120px;
+}
+
 /* Save Button Animation */
 #saveStepsBtn.saved {
     background-color: #198754;
