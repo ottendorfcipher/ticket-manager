@@ -19,6 +19,9 @@
         <div class="container-fluid">
             <span class="navbar-brand mb-0 h1">Ticket Manager</span>
             <div class="d-flex gap-2 align-items-center">
+                <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#importExportModal">
+                    <i class="bi bi-arrow-left-right"></i> Import/Export
+                </button>
                 <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#settingsModal">
                     <i class="bi bi-gear"></i> Settings
                 </button>
@@ -73,60 +76,73 @@
                         </button>
                     </div>
                     
-                    <div class="modal-actions mt-4">
-                        <div class="d-flex gap-2">
-                            <!-- Export split button with hover dropup -->
-                            <div class="btn-group dropup flex-fill export-group">
-                                <button class="btn btn-outline-success w-100" id="exportSettingsBtn">
-                                    <i class="bi bi-download"></i> Export
-                                </button>
-                                <button type="button" class="btn btn-outline-success dropdown-toggle dropdown-toggle-split export-menu-toggle" data-bs-toggle="dropdown" aria-expanded="false" title="More export options">
-                                    <i class="bi bi-chevron-up"></i>
-                                </button>
-                                <div class="dropdown-menu p-3 export-menu">
-                                    <div class="d-flex gap-4">
-                                        <div>
-                                            <div class="fw-semibold mb-2">Configuration</div>
-                                            <button class="dropdown-item export-option" data-export-type="configuration" data-export-format="json">JSON</button>
-                                            <button class="dropdown-item export-option" data-export-type="configuration" data-export-format="toml">TOML</button>
-                                        </div>
-                                        <div>
-                                            <div class="fw-semibold mb-2">Notes</div>
-                                            <button class="dropdown-item export-option" data-export-type="notes" data-export-format="csv">CSV</button>
-                                            <button class="dropdown-item export-option" data-export-type="notes" data-export-format="pdf">PDF</button>
-                                            <button class="dropdown-item export-option" data-export-type="notes" data-export-format="docx">DOCX</button>
-                                        </div>
+                    <div class="modal-actions mt-4"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import/Export Modal -->
+    <div class="modal fade" id="importExportModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Import/Export</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="d-flex gap-2">
+                        <!-- Export split button -->
+                        <div class="btn-group dropup flex-fill export-group">
+                            <button class="btn btn-outline-success w-100" id="exportSettingsBtn">
+                                <i class="bi bi-download"></i> Export
+                            </button>
+                            <button type="button" class="btn btn-outline-success dropdown-toggle dropdown-toggle-split export-menu-toggle" data-bs-toggle="dropdown" aria-expanded="false" title="More export options">
+                                <i class="bi bi-chevron-up"></i>
+                            </button>
+                            <div class="dropdown-menu p-3 export-menu">
+                                <div class="d-flex gap-4">
+                                    <div>
+                                        <div class="fw-semibold mb-2">Configuration</div>
+                                        <button class="dropdown-item export-option" data-export-type="configuration" data-export-format="json">JSON</button>
+                                        <button class="dropdown-item export-option" data-export-type="configuration" data-export-format="toml">TOML</button>
                                     </div>
-                                </div>
-                            </div>
-                            
-                            <!-- Import split button with hover dropup -->
-                            <div class="btn-group dropup flex-fill import-group">
-                                <button class="btn btn-outline-primary w-100" id="importSettingsBtn">
-                                    <i class="bi bi-upload"></i> Import
-                                </button>
-                                <button type="button" class="btn btn-outline-primary dropdown-toggle dropdown-toggle-split import-menu-toggle" data-bs-toggle="dropdown" aria-expanded="false" title="More import options">
-                                    <i class="bi bi-chevron-up"></i>
-                                </button>
-                                <div class="dropdown-menu p-3 import-menu">
-                                    <div class="d-flex gap-4">
-                                        <div>
-                                            <div class="fw-semibold mb-2">Configuration</div>
-                                            <button class="dropdown-item import-option" data-import-type="configuration" data-import-format="json">JSON</button>
-                                            <button class="dropdown-item import-option" data-import-type="configuration" data-import-format="toml">TOML</button>
-                                        </div>
-                                        <div>
-                                            <div class="fw-semibold mb-2">Notes</div>
-                                            <div class="small text-muted mb-2">Ticket #, Step, Notes</div>
-                                            <button class="dropdown-item import-option" data-import-type="notes" data-import-format="json">JSON</button>
-                                            <button class="dropdown-item import-option" data-import-type="notes" data-import-format="toml">TOML</button>
-                                        </div>
+                                    <div>
+                                        <div class="fw-semibold mb-2">Notes</div>
+                                        <button class="dropdown-item export-option" data-export-type="notes" data-export-format="csv">CSV</button>
+                                        <button class="dropdown-item export-option" data-export-type="notes" data-export-format="pdf">PDF</button>
+                                        <button class="dropdown-item export-option" data-export-type="notes" data-export-format="docx">DOCX</button>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                        <input type="file" id="importFileInput" accept=".json,.toml" style="display: none;">
+                        
+                        <!-- Import split button -->
+                        <div class="btn-group dropup flex-fill import-group">
+                            <button class="btn btn-outline-primary w-100" id="importSettingsBtn">
+                                <i class="bi bi-upload"></i> Import
+                            </button>
+                            <button type="button" class="btn btn-outline-primary dropdown-toggle dropdown-toggle-split import-menu-toggle" data-bs-toggle="dropdown" aria-expanded="false" title="More import options">
+                                <i class="bi bi-chevron-up"></i>
+                            </button>
+                            <div class="dropdown-menu p-3 import-menu">
+                                <div class="d-flex gap-4">
+                                    <div>
+                                        <div class="fw-semibold mb-2">Configuration</div>
+                                        <button class="dropdown-item import-option" data-import-type="configuration" data-import-format="json">JSON</button>
+                                        <button class="dropdown-item import-option" data-import-type="configuration" data-import-format="toml">TOML</button>
+                                    </div>
+                                    <div>
+                                        <div class="fw-semibold mb-2">Notes</div>
+                                        <div class="small text-muted mb-2">Ticket #, Step, Notes</div>
+                                        <button class="dropdown-item import-option" data-import-type="notes" data-import-format="json">JSON</button>
+                                        <button class="dropdown-item import-option" data-import-type="notes" data-import-format="toml">TOML</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
+                    <input type="file" id="importFileInput" accept=".json,.toml" style="display:none;" />
                 </div>
             </div>
         </div>
