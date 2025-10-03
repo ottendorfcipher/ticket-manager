@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ticket Manager</title>
+    
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Header with Settings -->
+    <nav class="navbar navbar-light bg-light">
+        <div class="container-fluid">
+            <span class="navbar-brand mb-0 h1">Ticket Manager</span>
+            <div class="d-flex gap-2 align-items-center">
+                <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#settingsModal">
+                    <i class="bi bi-gear"></i> Settings
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Container -->
+    <div class="container my-4">
+        <div id="ticketContainer">
+            <!-- Ticket rows will be dynamically added here -->
+        </div>
+    </div>
+
+
+    <!-- Selection Mode Overlay -->
+    <div id="selectionOverlay" class="selection-overlay" style="display: none;"></div>
+
+    <!-- Add/Delete Button (Fixed Bottom Right) -->
+    <button id="addTicketBtn" class="btn btn-primary btn-add-ticket">
+        <i class="bi bi-plus-lg"></i>
+    </button>
+    
+    <!-- Drag to Delete Zone -->
+    <div id="dragDeleteZone" class="drag-delete-zone" style="display: none;">
+        <div class="drag-delete-inner">
+            <i class="bi bi-trash"></i>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal fade" id="settingsModal" tabindex="-1" aria-labelledby="settingsModalLabel" aria-hidden="true" data-bs-backdrop="static">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <button type="button" class="btn-close modal-close-custom" id="settingsModalClose" aria-label="Close"></button>
+                <div class="modal-body p-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="text-muted mb-0">Configure Steps</h6>
+                    </div>
+                    <div id="stepsList">
+                        <!-- Steps will be added here -->
+                    </div>
+                    <button class="btn btn-outline-secondary btn-add-step-simple" id="addStepBtn">
+                        <i class="bi bi-plus-circle"></i>
+                    </button>
+                    
+                    <!-- Save Button -->
+                    <div class="text-center mt-3">
+                        <button class="btn btn-primary" id="saveStepsBtn">
+                            <i class="bi bi-floppy"></i> Save Changes
+                        </button>
+                    </div>
+                    
+                    <div class="modal-actions mt-4">
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-outline-success flex-fill" id="exportSettingsBtn">
+                                <i class="bi bi-download"></i> Export
+                            </button>
+                            <button class="btn btn-outline-primary flex-fill" id="importSettingsBtn">
+                                <i class="bi bi-upload"></i> Import
+                            </button>
+                        </div>
+                        <input type="file" id="importFileInput" accept=".json" style="display: none;">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content">
+                <div class="modal-body text-center p-4">
+                    <i class="bi bi-exclamation-triangle-fill text-warning" style="font-size: 48px;"></i>
+                    <h5 class="mt-3" id="confirmModalTitle">Are you sure?</h5>
+                    <p class="text-muted" id="confirmModalMessage"></p>
+                    <div class="d-flex gap-2 mt-4">
+                        <button type="button" class="btn btn-secondary flex-fill" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-danger flex-fill" id="confirmModalConfirm">Delete</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Color Picker Modal -->
+    <div class="modal fade" id="colorPickerModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title mb-0">Custom Color Picker</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-3">
+                    <!-- Visual Color Picker -->
+                    <div class="mb-3">
+                        <div class="visual-picker-wrapper">
+                            <input type="color" id="modalColorPicker" class="hidden-color-input" value="#ffffff">
+                            <div id="visualPickerBox" class="visual-picker-box-compact" title="Click to select a color">
+                                <span class="picker-hint">Click to select color</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Hex Input -->
+                    <div class="mb-2">
+                        <label class="form-label-compact">HEX</label>
+                        <input type="text" id="hexInput" class="form-control form-control-sm" placeholder="#FFFFFF" maxlength="7">
+                    </div>
+                    
+                    <!-- RGB Inputs -->
+                    <div class="mb-2">
+                        <label class="form-label-compact">RGB</label>
+                        <div class="d-flex gap-2">
+                            <input type="number" id="rgbR" class="form-control form-control-sm" placeholder="R" min="0" max="255">
+                            <input type="number" id="rgbG" class="form-control form-control-sm" placeholder="G" min="0" max="255">
+                            <input type="number" id="rgbB" class="form-control form-control-sm" placeholder="B" min="0" max="255">
+                        </div>
+                    </div>
+                    
+                    <!-- CMYK Inputs -->
+                    <div class="mb-2">
+                        <label class="form-label-compact">CMYK</label>
+                        <div class="d-flex gap-2">
+                            <input type="number" id="cmykC" class="form-control form-control-sm" placeholder="C" min="0" max="100">
+                            <input type="number" id="cmykM" class="form-control form-control-sm" placeholder="M" min="0" max="100">
+                            <input type="number" id="cmykY" class="form-control form-control-sm" placeholder="Y" min="0" max="100">
+                            <input type="number" id="cmykK" class="form-control form-control-sm" placeholder="K" min="0" max="100">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-lg"></i> Cancel
+                    </button>
+                    <button type="button" class="btn btn-sm btn-success" id="saveCustomColorBtn">
+                        <i class="bi bi-check-lg"></i> Save Color
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap 5 JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Custom JavaScript -->
+    <script src="app.js"></script>
+</body>
+</html>
