@@ -1104,7 +1104,7 @@ function setupSlidingColorPicker(row, ticket) {
             paletteWrap.style.maxWidth = '0px';
             // allow dragging again after collapse
             row.classList.remove('no-drag');
-        }, 2000);
+        }, 800); // faster collapse after mouse leaves
     });
     
     picker.addEventListener('mouseenter', () => {

@@ -259,7 +259,12 @@ body {
     max-width: 0;
     transition: max-width 0.25s ease;
     min-height: 40px; /* ensure full circle height within wrapper */
-    padding: 4px 6px; /* add side cushion so edges aren’t clipped */
+    padding: 0; /* no side padding when collapsed to prevent left edge showing */
+}
+
+/* Add side cushion only when expanded */
+.quick-color-picker.expanded .palette-wrap {
+    padding: 4px 6px;
 }
 
 /* Expanded state is controlled via JS by setting palette wrap max-width */
