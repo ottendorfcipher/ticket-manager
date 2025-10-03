@@ -37,12 +37,17 @@
     <!-- Selection Mode Overlay -->
     <div id="selectionOverlay" class="selection-overlay" style="display: none;"></div>
 
-    <!-- Add/Delete Button (Fixed Bottom Right) -->
-    <button id="addTicketBtn" class="btn btn-primary btn-add-ticket">
+    <!-- Add Button (Fixed Bottom Right) -->
+    <button id="addTicketBtn" class="btn btn-primary btn-add-ticket" title="Add ticket">
         <i class="bi bi-plus-lg"></i>
     </button>
+
+    <!-- Delete Button (Fixed Bottom Left) -->
+    <button id="deleteTicketBtn" class="btn btn-danger btn-delete-ticket" title="Delete">
+        <i class="bi bi-trash"></i>
+    </button>
     
-    <!-- Drag to Delete Zone -->
+    <!-- Drag to Delete Zone (Left Semi-circle) -->
     <div id="dragDeleteZone" class="drag-delete-zone" style="display: none;">
         <div class="drag-delete-inner">
             <i class="bi bi-trash"></i>

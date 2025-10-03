@@ -4,7 +4,7 @@ body {
     user-select: none;
 }
 
-/* Add/Delete Button Fixed Bottom Right */
+/* Add Button Fixed Bottom Right */
 .btn-add-ticket {
     position: fixed;
     bottom: 30px;
@@ -27,6 +27,29 @@ body {
     transition: transform 0.2s;
 }
 
+/* Delete Button Fixed Bottom Left (visible) */
+.btn-delete-ticket {
+    position: fixed;
+    bottom: 30px;
+    left: 30px;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    font-size: 24px;
+    box-shadow: 0 4px 12px rgba(220, 53, 69, 0.25);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: all 0.3s ease;
+}
+
+.btn-delete-ticket:hover {
+    transform: scale(1.1);
+    transition: transform 0.2s;
+}
+
 .btn-add-ticket.delete-mode {
     background-color: #dc3545;
     border-color: #dc3545;
@@ -35,6 +58,17 @@ body {
 .btn-add-ticket.delete-mode i {
     font-size: 28px;
 }
+
+/* Greyed + button while dragging */
+.btn-add-ticket.disabled {
+    background-color: #e9ecef !important;
+    border-color: #ced4da !important;
+    color: #6c757d !important;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+    cursor: not-allowed;
+    transform: none !important;
+}
+.btn-add-ticket.disabled i { color: #6c757d !important; }
 
 /* Ticket Container Grid */
 #ticketContainer {
@@ -624,13 +658,14 @@ body.selection-mode .ticket-row.selected-for-bulk {
     color: #495057;
 }
 
-/* Drag to Delete Zone - 90 degree arc */
+/* Drag to Delete Zone - Left Semi-circle */
 .drag-delete-zone {
     position: fixed;
-    bottom: 0;
-    right: 0;
-    width: 200px;
-    height: 200px;
+    top: 50%;
+    left: 0;
+    transform: translateY(-50%);
+    width: 180px;
+    height: 360px;
     z-index: 1001;
     pointer-events: none;
     overflow: hidden;
@@ -639,33 +674,34 @@ body.selection-mode .ticket-row.selected-for-bulk {
 .drag-delete-zone::before {
     content: '';
     position: absolute;
-    bottom: 0;
-    right: 0;
-    width: 200%;
-    height: 200%;
+    top: 0;
+    left: -180px; /* center full circle so right half shows */
+    width: 360px;
+    height: 360px;
     background: #dc3545;
     border-radius: 50%;
-    transform: translate(50%, 50%);
     transition: all 0.3s ease;
-    box-shadow: -4px -4px 20px rgba(220, 53, 69, 0.4);
+    box-shadow: 4px 0 20px rgba(220, 53, 69, 0.4);
 }
 
 .drag-delete-zone.active {
-    width: 300px;
-    height: 300px;
+    width: 220px;
+    height: 440px;
 }
 
 .drag-delete-zone.active::before {
-    width: 200%;
-    height: 200%;
+    left: -220px;
+    width: 440px;
+    height: 440px;
     background: #c82333;
-    box-shadow: -8px -8px 30px rgba(220, 53, 69, 0.6);
+    box-shadow: 8px 0 30px rgba(220, 53, 69, 0.6);
 }
 
 .drag-delete-inner {
     position: absolute;
-    bottom: 40px;
-    right: 40px;
+    left: 40px;
+    top: 50%;
+    transform: translateY(-50%);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -677,8 +713,7 @@ body.selection-mode .ticket-row.selected-for-bulk {
 }
 
 .drag-delete-zone.active .drag-delete-inner {
-    bottom: 80px;
-    right: 80px;
+    left: 60px;
     font-size: 72px;
 }
 
