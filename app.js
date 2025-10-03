@@ -757,11 +757,19 @@ function toToml(obj) {
 }
 
 function notesToCsv(rows) {
+    // CSV header and rows
     const esc = (v) => '"' + String(v ?? '').replace(/"/g,'""').replace(/\n/g,'\\n') + '"';
     const header = ['ticket_number','step','notes'];
     const lines = [header.join(',')];
     rows.forEach(r => lines.push([r.ticket_number, esc(r.step), esc(r.notes)].join(',')));
     return lines.join('\n');
+}
+
+function buildNotesHtmlTable(rows) {
+    const esc = (s) => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const head = '<thead class="table-dark"><tr><th style="width:100px">Ticket #</th><th style="width:160px">Step</th><th>Notes</th></tr></thead>';
+    const body = `<tbody>${rows.map(r => `<tr><td>${esc(r.ticket_number)}</td><td>${esc(r.step)}</td><td style="white-space:pre-wrap">${esc(r.notes)}</td></tr>`).join('')}</tbody>`;
+    return `<div class="table-responsive"><table class="table table-sm table-bordered">${head}${body}</table></div>`;
 }
 
 function openExportPreview(type, format) {
@@ -797,34 +805,57 @@ function openExportPreview(type, format) {
             pre.style.display = 'block'; htmlDiv.style.display = 'none';
             pre.textContent = content;
         } else if (format === 'pdf') {
-            // Simple text preview and later use jsPDF on download
-            content = rows.map(r => `${r.ticket_number}\t${r.step}\t${r.notes}`).join('\n');
-            pendingExport.content = content;
+            // Build nice table using jsPDF + AutoTable
             pendingExport.blobBuilder = () => {
                 const { jsPDF } = window.jspdf || {};
-                const doc = new jsPDF({ unit:'pt', format:'a4' });
-                const margin = 40; let y = margin;
-                const lineHeight = 14; const maxWidth = 515; // ~ a4 - margins
-                doc.setFontSize(12);
-                const lines = doc.splitTextToSize(content, maxWidth);
-                lines.forEach(line => { if (y > 770) { doc.addPage(); y = margin; } doc.text(line, margin, y); y += lineHeight; });
+                const doc = new jsPDF({ unit:'pt', format:'a4', orientation: 'portrait' });
+                const margin = 40;
+                doc.setFontSize(14);
+                doc.text('Ticket Notes', margin, margin);
+                const head = [['Ticket #','Step','Notes']];
+                const body = rows.map(r => [String(r.ticket_number), String(r.step || ''), String(r.notes || '')]);
+                if (doc.autoTable) {
+                    doc.autoTable({
+                        startY: margin + 20,
+                        head,
+                        body,
+                        styles: { fontSize: 10, cellPadding: 6, valign: 'top' },
+                        headStyles: { fillColor: [33,37,41], textColor: 255 },
+                        columnStyles: { 0: { cellWidth: 80 }, 1: { cellWidth: 140 }, 2: { cellWidth: 'auto' } },
+                        margin: { left: margin, right: margin }
+                    });
+                }
                 return doc.output('blob');
             };
-            pre.style.display = 'block'; htmlDiv.style.display = 'none';
-            pre.textContent = content;
+            // HTML table preview
+            pre.style.display = 'none'; htmlDiv.style.display = 'block';
+            htmlDiv.innerHTML = buildNotesHtmlTable(rows);
         } else if (format === 'docx') {
-            // Simple paragraph document
-            content = rows.map(r => `${r.ticket_number}\t${r.step}\t${r.notes}`).join('\n');
-            pendingExport.content = content;
+            // Build DOCX table
             pendingExport.blobBuilder = async () => {
                 const docx = window.docx;
-                const paragraphs = content.split('\n').map(line => new docx.Paragraph(line));
-                const doc = new docx.Document({ sections: [{ properties: {}, children: paragraphs }] });
+                const headerRow = new docx.TableRow({
+                    children: [
+                        new docx.TableCell({ children: [new docx.Paragraph({ children:[new docx.TextRun({text:'Ticket #', bold:true})] })] }),
+                        new docx.TableCell({ children: [new docx.Paragraph({ children:[new docx.TextRun({text:'Step', bold:true})] })] }),
+                        new docx.TableCell({ children: [new docx.Paragraph({ children:[new docx.TextRun({text:'Notes', bold:true})] })] })
+                    ]
+                });
+                const dataRows = rows.map(r => new docx.TableRow({
+                    children: [
+                        new docx.TableCell({ children:[ new docx.Paragraph(String(r.ticket_number)) ] }),
+                        new docx.TableCell({ children:[ new docx.Paragraph(String(r.step || '')) ] }),
+                        new docx.TableCell({ children:[ new docx.Paragraph(String(r.notes || '')) ] })
+                    ]
+                }));
+                const table = new docx.Table({ width: { size: 100, type: docx.WidthType.PERCENTAGE }, rows: [headerRow, ...dataRows] });
+                const doc = new docx.Document({ sections: [{ properties: {}, children: [new docx.Paragraph({ text: 'Ticket Notes', heading: docx.HeadingLevel.HEADING_2 }), table] }] });
                 const blob = await docx.Packer.toBlob(doc);
                 return blob;
             };
-            pre.style.display = 'block'; htmlDiv.style.display = 'none';
-            pre.textContent = content;
+            // HTML table preview
+            pre.style.display = 'none'; htmlDiv.style.display = 'block';
+            htmlDiv.innerHTML = buildNotesHtmlTable(rows);
         }
     }
 
