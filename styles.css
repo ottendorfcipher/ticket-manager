@@ -265,6 +265,12 @@ body {
 .quick-color-picker.expanded {
 }
 
+/* Grey out selected circle when expanded */
+.quick-color-picker.expanded .selected-color-circle {
+    filter: grayscale(100%) brightness(0.85);
+    opacity: 0.6;
+}
+
 /* The visible selected color circle */
 .selected-color-circle {
     width: 24px; /* same size as palette circles */
@@ -272,11 +278,14 @@ body {
     border-radius: 50%;
     position: relative;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+    border: 2px solid rgba(0, 0, 0, 0.15); /* match palette circle outline */
     flex: 0 0 auto;
     display: flex;
     align-items: center;
     justify-content: center;
     overflow: visible;
+    align-self: center; /* align vertically with palette */
+    transition: filter 0.2s ease, opacity 0.2s ease;
 }
 
 /* Selected icon overlay */
@@ -385,6 +394,7 @@ body {
     align-items: center;
     gap: 8px;
     flex: 0 0 auto;
+    padding: 4px 0; /* give vertical room for hover scale */
 }
 
 .quick-color-circle {
