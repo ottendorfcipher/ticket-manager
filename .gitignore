@@ -2,3 +2,101 @@ node_modules/
 tickets.db
 *.log
 .DS_Store
+
+# === BEGIN: Additional ignores (2025-10-03) ===
+# Logs
+logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Diagnostic reports (Node.js)
+report.[0-9]*.*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage
+coverage/
+.nyc_output/
+coverage-final.json
+
+# Build outputs and caches
+dist/
+build/
+out/
+.cache/
+.parcel-cache/
+.rollup.cache/
+.turbo/
+.vite/
+.next/
+.nuxt/
+.svelte-kit/
+lib-cov/
+storybook-static/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Testing artifacts
+.cypress/
+cypress/videos/
+cypress/screenshots/
+cypress/downloads/
+playwright-report/
+test-results/
+playwright/.cache/
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*.local
+!.env.example
+
+# Databases
+*.sqlite
+*.sqlite3
+*.db
+*.db-*
+*.sqlite-journal
+
+# OS/editor files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.idea/
+*.iml
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+
+# Node/yarn/npm caches
+.npm
+.yarn-integrity
+.node_repl_history
+bower_components/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+*.swp
+*.swo
+
+# Merge/patch leftovers
+*.orig
+*.rej
+# === END: Additional ignores ===
