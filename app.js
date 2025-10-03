@@ -1467,8 +1467,7 @@ function startDragMode() {
     const addBtn = document.getElementById('addTicketBtn');
     const deleteZone = document.getElementById('dragDeleteZone');
     
-    // Keep + button visible but grey it out
-    addBtn.classList.add('disabled');
+    addBtn.style.display = 'none';
     deleteZone.style.display = 'flex';
 }
 
@@ -1479,7 +1478,7 @@ function endDragMode() {
     
     isDragging = false;
     
-    addBtn.classList.remove('disabled');
+    addBtn.style.display = 'flex';
     deleteZone.style.display = 'none';
     deleteZone.classList.remove('active');
     
