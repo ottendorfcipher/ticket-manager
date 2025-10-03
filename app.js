@@ -1020,8 +1020,8 @@ function setupSlidingColorPicker(row, ticket) {
     selectedCircle.style.backgroundColor = ticket.color.startsWith('#') ? ticket.color : getColorValue(ticket.color);
     selectedCircle.title = 'Current color - hover to change';
     const icon = document.createElement('img');
-    icon.src = 'assets/selected-icon.svg';
-    icon.alt = 'selected';
+    icon.src = 'assets/colorwheel.png';
+    icon.alt = 'selected colorwheel';
     icon.className = 'selected-icon';
     selectedCircle.appendChild(icon);
     
