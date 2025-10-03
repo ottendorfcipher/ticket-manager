@@ -682,13 +682,21 @@ function buildConfigurationData() {
     };
 }
 
-// Build notes data
+// Build notes data (live snapshot from DOM to avoid stale state during typing)
 function buildNotesData() {
-    return tickets.map(t => ({
-        ticket_number: t.ticket_number,
-        step: steps.find(s => s.id === t.current_step_id)?.name || '',
-        notes: t.notes || ''
-    }));
+    return tickets.map(t => {
+        const row = document.getElementById(`ticket-${t.id}`);
+        let liveNotes = t.notes || '';
+        if (row) {
+            const ta = row.querySelector('.ticket-notes');
+            if (ta && typeof ta.value === 'string') liveNotes = ta.value;
+        }
+        return {
+            ticket_number: t.ticket_number,
+            step: steps.find(s => s.id === t.current_step_id)?.name || '',
+            notes: liveNotes
+        };
+    });
 }
 
 function toToml(obj) {
@@ -916,8 +924,6 @@ async function importNotes(notes) {
     }
     renderTickets();
 }
-}
-
 
 // Add a new step
 async function addStep() {
