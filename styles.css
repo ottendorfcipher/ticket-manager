@@ -258,7 +258,8 @@ body {
     overflow-y: visible; /* do not clip vertical hover scale */
     max-width: 0;
     transition: max-width 0.25s ease;
-    min-height: 34px; /* ensure full circle height within wrapper */
+    min-height: 40px; /* ensure full circle height within wrapper */
+    padding: 4px 6px; /* add side cushion so edges aren’t clipped */
 }
 
 /* Expanded state is controlled via JS by setting palette wrap max-width */

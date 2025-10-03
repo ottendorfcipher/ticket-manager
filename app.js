@@ -1018,7 +1018,7 @@ function setupSlidingColorPicker(row, ticket) {
     const selectedCircle = document.createElement('div');
     selectedCircle.className = 'selected-color-circle';
     selectedCircle.style.backgroundColor = ticket.color.startsWith('#') ? ticket.color : getColorValue(ticket.color);
-    selectedCircle.title = 'Current color - hover to change';
+    selectedCircle.title = 'Hover to select color';
     const icon = document.createElement('img');
     icon.src = 'assets/colorwheel.png';
     icon.alt = 'selected colorwheel';
@@ -1092,8 +1092,8 @@ function setupSlidingColorPicker(row, ticket) {
         const gap = parseInt(gapStr) || 0;
         const childrenWidth = children.reduce((sum, el) => sum + el.offsetWidth, 0);
         const totalPaletteWidth = childrenWidth + gap * Math.max(0, children.length - 1);
-        // Add small padding buffer
-        return totalPaletteWidth + 8;
+        // Add buffer to avoid clipping at both ends and during hover scale
+        return totalPaletteWidth + 28;
     }
 
     // Auto-collapse after 2 seconds when mouse leaves
