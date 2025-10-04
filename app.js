@@ -223,8 +223,16 @@ function setupEventListeners() {
     // Toggle handlers
     const chkCustom = document.getElementById('toggleCustomNumbering');
     const chkSeq = document.getElementById('toggleSequentialNumbers');
-    if (chkCustom) chkCustom.addEventListener('change', () => { appSettings.customNumbering = chkCustom.checked; saveAppSettings(); });
-    if (chkSeq) chkSeq.addEventListener('change', () => { appSettings.randomTwoDigitNumbers = chkSeq.checked; saveAppSettings(); });
+    if (chkCustom) chkCustom.addEventListener('change', () => { 
+        appSettings.customNumbering = chkCustom.checked; 
+        hasUnsavedChanges = true;
+        updateSaveButtonState();
+    });
+    if (chkSeq) chkSeq.addEventListener('change', () => { 
+        appSettings.randomTwoDigitNumbers = chkSeq.checked; 
+        hasUnsavedChanges = true;
+        updateSaveButtonState();
+    });
 }
 
 // Settings (persisted)
@@ -808,6 +816,10 @@ async function saveAllSteps() {
         });
         
         await Promise.all(updatePromises);
+        
+        // Persist numbering settings along with step updates
+        saveAppSettings();
+
         renderTickets(); // Re-render tickets with updated steps
         
         // Clear change tracking
