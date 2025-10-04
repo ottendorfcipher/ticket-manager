@@ -69,6 +69,7 @@ body {
     gap: 15px;
     min-height: 250px;
     cursor: grab;
+    position: relative; /* enable drop indicator lines */
 }
 
 .ticket-row:active {
@@ -96,6 +97,23 @@ body {
     transition: none;
 }
 
+/* Visual drop indicators for reordering */
+.ticket-row.drop-before::before,
+.ticket-row.drop-after::after {
+    content: '';
+    position: absolute;
+    top: 8px;
+    bottom: 8px;
+    width: 4px;
+    background: #0d6efd;
+    border-radius: 2px;
+    z-index: 5;
+    box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.18);
+    pointer-events: none;
+}
+.ticket-row.drop-before::before { left: 0; }
+.ticket-row.drop-after::after { right: 0; }
+
 .ticket-row.selected {
     outline: 3px solid #0d6efd;
     outline-offset: 2px;
@@ -103,6 +121,10 @@ body {
 
 .ticket-row.drag-over-delete {
     opacity: 0.3;
+}
+
+.drag-delete-zone {
+    cursor: pointer;
 }
 
 /* Ticket Checkbox */
@@ -121,28 +143,20 @@ body {
     background-color: #ffffff;
 }
 
-.ticket-row.bg-yellow {
-    background-color: #fff9c4;
-}
-
 .ticket-row.bg-pink {
-    background-color: #fce4ec;
-}
-
-.ticket-row.bg-blue {
-    background-color: #e3f2fd;
-}
-
-.ticket-row.bg-green {
-    background-color: #e8f5e9;
-}
-
-.ticket-row.bg-purple {
-    background-color: #f3e5f5;
+    background-color: #ff69b4;
 }
 
 .ticket-row.bg-orange {
-    background-color: #fff3e0;
+    background-color: #ff8c00;
+}
+
+.ticket-row.bg-yellow {
+    background-color: #ffeb3b;
+}
+
+.ticket-row.bg-blue {
+    background-color: #2196f3;
 }
 
 /* Ticket Header */
@@ -153,6 +167,8 @@ body {
     position: relative;
     overflow: visible; /* ensure header doesn't clip animated rings */
 }
+
+
 
 /* Ticket Number */
 .ticket-number {
@@ -210,6 +226,7 @@ body {
     align-items: center;
     gap: 15px;
     justify-content: center;
+    min-height: 40px; /* ensure consistent height even when arrows are missing */
 }
 
 .step-navigator .step-name {
@@ -242,12 +259,8 @@ body {
 }
 
 .step-navigator .step-arrow:disabled {
-    opacity: 1; /* keep space consistent */
-    cursor: default;
-    border-color: transparent; /* hide ring */
-}
-.step-navigator .step-arrow:disabled i {
-    visibility: hidden; /* hide icon but keep button size */
+    visibility: hidden; /* hide circle and icon but keep layout space */
+    pointer-events: none;
 }
 
 .step-navigator .no-steps {
@@ -271,7 +284,7 @@ body {
     overflow-x: hidden;  /* clip horizontally */
     overflow-y: visible; /* do not clip vertical hover scale */
     max-width: 0;
-    transition: max-width 0.25s ease;
+    transition: max-width 0.18s ease; /* snappier animation */
     min-height: 40px; /* ensure full circle height within wrapper */
     padding: 0; /* no side padding when collapsed to prevent left edge showing */
 }
@@ -518,8 +531,81 @@ body {
     color: white;
 }
 
+/* Step actions (move up/down + delete) */
+.simple-step-actions {
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+    margin-left: 8px;
+}
+.simple-step-move {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: none;
+    background-color: #f8f9fa;
+    color: #0d6efd;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+}
+.simple-step-move:hover:not(:disabled) { background-color: #e9ecef; }
+.simple-step-move:disabled { opacity: 0.4; cursor: default; }
+
+/* Drag handle and reordering indicators for steps */
+.simple-step-handle {
+    cursor: grab;
+    color: #6c757d;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    padding: 4px 6px;
+    margin-right: 6px;
+    min-width: 44px;
+    min-height: 44px;
+}
+.simple-step-handle:active { cursor: grabbing; }
+
+.simple-step-item.dragging {
+    opacity: 0.5;
+}
+
+/* Steps list scroll area */
+.steps-list {
+    max-height: 50vh;
+    overflow: auto;
+    padding-right: 2px;
+}
+
+/* Sticky footer inside modal */
+.settings-footer {
+    position: sticky;
+    bottom: 0;
+    background: linear-gradient(to top, rgba(255,255,255,0.96), rgba(255,255,255,0.88));
+    padding-top: 12px;
+    border-top: 1px solid #dee2e6;
+    z-index: 5;
+}
+
+.simple-step-item.reorder-before::before,
+.simple-step-item.reorder-after::after {
+    content: '';
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    height: 4px;
+    background: #0d6efd;
+    border-radius: 2px;
+}
+.simple-step-item.reorder-before::before { top: -2px; }
+.simple-step-item.reorder-after::after { bottom: -2px; }
+
 .btn-add-step-simple {
-    width: 100%;
+    width: auto;
     padding: 12px;
     border: 2px dashed #dee2e6;
     border-radius: 8px;
@@ -563,6 +649,11 @@ body {
 
 #saveStepsBtn.saved i {
     animation: checkmarkPop 0.3s ease;
+}
+
+/* Action buttons unified width */
+.btn-action {
+    min-width: 200px;
 }
 
 @keyframes checkmarkPop {
@@ -656,7 +747,7 @@ body.selection-mode .ticket-row.selected-for-bulk {
     width: 200px;
     height: 200px;
     z-index: 1001;
-    pointer-events: none;
+    pointer-events: auto; /* clickable */
     overflow: hidden;
 }
 
@@ -705,6 +796,31 @@ body.selection-mode .ticket-row.selected-for-bulk {
     right: 80px;
     font-size: 72px;
 }
+
+/* Toast for undo actions */
+.tm-toast {
+    position: fixed;
+    left: 50%;
+    bottom: 20px;
+    transform: translateX(-50%);
+    background: #212529;
+    color: #fff;
+    padding: 10px 14px;
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    z-index: 2000;
+}
+.tm-toast button {
+    background: transparent;
+    border: 1px solid #6c757d;
+    color: #fff;
+    border-radius: 4px;
+    padding: 4px 8px;
+}
+.tm-toast button:hover { background: #343a40; }
 
 /* Empty State */
 .empty-state {

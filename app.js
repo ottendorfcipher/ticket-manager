@@ -17,6 +17,56 @@ let hasUnsavedChanges = false;
 let changeLog = [];
 let currentColorPickerTicketId = null;
 let isUpdatingColorInputs = false;
+let notesSaveTimers = new Map();
+
+// Default color palette (used for new tickets and UI)
+const DEFAULT_COLORS = ['pink', 'orange', 'yellow', 'blue'];
+
+function pickNextDefaultColor(lastColor) {
+    const idx = DEFAULT_COLORS.indexOf(lastColor);
+    if (idx === -1) return DEFAULT_COLORS[0];
+    return DEFAULT_COLORS[(idx + 1) % DEFAULT_COLORS.length];
+}
+
+// Global quick color picker state for fluid open/close
+let activeQuickPicker = null;
+let activePaletteWrap = null;
+let pickerCollapseTimer = null;
+let pickerTrackingInstalled = false;
+
+function collapseActivePicker(immediate = false) {
+    if (!activeQuickPicker) return;
+    if (pickerCollapseTimer) clearTimeout(pickerCollapseTimer);
+
+    const picker = activeQuickPicker;
+    const wrap = activePaletteWrap;
+    const rowEl = picker.closest('.ticket-row');
+
+    const doCollapse = () => {
+        picker.classList.remove('expanded');
+        if (wrap) wrap.style.maxWidth = '0px';
+        if (rowEl) rowEl.classList.remove('no-drag');
+    };
+
+    if (immediate) doCollapse();
+    else pickerCollapseTimer = setTimeout(doCollapse, 180);
+}
+
+function ensurePickerPointerTracking() {
+    if (pickerTrackingInstalled) return;
+    pickerTrackingInstalled = true;
+    document.addEventListener('mousemove', (e) => {
+        if (!activeQuickPicker) return;
+        const rect = activeQuickPicker.getBoundingClientRect();
+        const margin = 12; // small cushion so it doesn't collapse at the exact edge
+        const inside = (
+            e.clientX >= rect.left - margin && e.clientX <= rect.right + margin &&
+            e.clientY >= rect.top - margin && e.clientY <= rect.bottom + margin
+        );
+        if (!inside) collapseActivePicker(true);
+    });
+}
+
 
 // Load custom colors from localStorage
 function loadCustomColors() {
@@ -70,8 +120,8 @@ function setupEventListeners() {
     document.getElementById('saveStepsBtn').addEventListener('click', saveAllSteps);
     document.getElementById('exportSettingsBtn').addEventListener('click', exportSettings);
     
-    // Hover to open menus: already handled by CSS, but ensure click closes
-    document.querySelectorAll('.export-menu-toggle, .import-menu-toggle').forEach(t => {
+    // Hover to open export menu: already handled by CSS, but ensure click closes
+    document.querySelectorAll('.export-menu-toggle').forEach(t => {
         t.addEventListener('click', (e) => e.preventDefault());
     });
 
@@ -84,14 +134,15 @@ function setupEventListeners() {
         });
     });
 
-    // Import menu options
-    document.querySelectorAll('.import-option').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const type = btn.dataset.importType; // 'configuration' or 'notes'
-            const format = btn.dataset.importFormat; // 'json','toml'
-            beginImportFlow(type, format);
+    // Simple import: auto-detect file type on selection
+    const importBtn = document.getElementById('importSettingsBtn');
+    if (importBtn) {
+        importBtn.addEventListener('click', () => {
+            const input = document.getElementById('importFileInput');
+            input.value = '';
+            input.click();
         });
-    });
+    }
     document.getElementById('importFileInput').addEventListener('change', importSettings);
     // Undo button removed from UI
     document.getElementById('settingsModalClose').addEventListener('click', handleSettingsClose);
@@ -104,6 +155,58 @@ function setupEventListeners() {
     document.getElementById('visualPickerBox').addEventListener('click', () => {
         document.getElementById('modalColorPicker').click();
     });
+
+    // Click-to-delete on red delete semicircle (treat same as dropping)
+    const deleteZone = document.getElementById('dragDeleteZone');
+    const deleteInner = document.querySelector('#dragDeleteZone .drag-delete-inner');
+
+    async function handleDeleteZoneClick(e) {
+        e.stopPropagation();
+        // If currently dragging multiple selections
+        if (isSelectionMode && selectedTickets.size > 1) {
+            const count = selectedTickets.size;
+            showConfirm(
+                `Delete ${count} Tickets?`,
+                'This action cannot be undone.',
+                async () => {
+                    const ticketIds = Array.from(selectedTickets);
+                    for (const id of ticketIds) {
+                        await deleteTicket(id);
+                    }
+                    selectedTickets.clear();
+                    exitSelectionMode();
+                    endDragMode();
+                    draggedTicketId = null;
+                }
+            );
+            return;
+        }
+        // Single selected in selection mode
+        if (isSelectionMode && selectedTickets.size === 1) {
+            const ticketId = Array.from(selectedTickets)[0];
+            await deleteTicket(ticketId);
+            exitSelectionMode();
+            endDragMode();
+            draggedTicketId = null;
+            return;
+        }
+        // If dragging a single ticket (not in selection mode)
+        if (isDragging && draggedTicketId) {
+            const ticketToDelete = draggedTicketId;
+            await deleteTicket(ticketToDelete);
+            endDragMode();
+            draggedTicketId = null;
+            return;
+        }
+        // Nothing selected: no-op
+    }
+
+    if (deleteZone) deleteZone.addEventListener('click', handleDeleteZoneClick);
+    if (deleteInner) deleteInner.addEventListener('click', handleDeleteZoneClick);
+
+    // Cancel button inside settings footer
+    const settingsCancelBtn = document.getElementById('settingsCancelBtn');
+    if (settingsCancelBtn) settingsCancelBtn.addEventListener('click', handleSettingsClose);
     
     // Setup settings modal open event to capture original state
     const settingsModal = document.getElementById('settingsModal');
@@ -113,7 +216,7 @@ function setupEventListeners() {
         undoHistory = [];
         changeLog = [];
         updateUndoButton();
-        resetSaveButton();
+        updateSaveButtonState();
         // sync toggles
         loadAppSettings();
     });
@@ -121,21 +224,33 @@ function setupEventListeners() {
     const chkCustom = document.getElementById('toggleCustomNumbering');
     const chkSeq = document.getElementById('toggleSequentialNumbers');
     if (chkCustom) chkCustom.addEventListener('change', () => { appSettings.customNumbering = chkCustom.checked; saveAppSettings(); });
-    if (chkSeq) chkSeq.addEventListener('change', () => { appSettings.sequentialNumbers = chkSeq.checked; saveAppSettings(); });
+    if (chkSeq) chkSeq.addEventListener('change', () => { appSettings.randomTwoDigitNumbers = chkSeq.checked; saveAppSettings(); });
 }
 
 // Settings (persisted)
-let appSettings = { customNumbering: false, sequentialNumbers: false };
+let appSettings = { customNumbering: false, randomTwoDigitNumbers: false };
 function loadAppSettings() {
     try {
         const raw = localStorage.getItem('tmSettings');
-        if (raw) appSettings = Object.assign(appSettings, JSON.parse(raw));
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            // Migrate legacy sequentialNumbers -> randomTwoDigitNumbers (invert semantics)
+            if (typeof parsed.sequentialNumbers === 'boolean' && typeof parsed.randomTwoDigitNumbers !== 'boolean') {
+                parsed.randomTwoDigitNumbers = !parsed.sequentialNumbers;
+                delete parsed.sequentialNumbers;
+                // Persist migration so subsequent loads use the new key
+                appSettings = Object.assign(appSettings, parsed);
+                saveAppSettings();
+            } else {
+                appSettings = Object.assign(appSettings, parsed);
+            }
+        }
     } catch {}
     // sync UI if present
     const chkCustom = document.getElementById('toggleCustomNumbering');
     const chkSeq = document.getElementById('toggleSequentialNumbers');
     if (chkCustom) chkCustom.checked = !!appSettings.customNumbering;
-    if (chkSeq) chkSeq.checked = !!appSettings.sequentialNumbers;
+    if (chkSeq) chkSeq.checked = !!appSettings.randomTwoDigitNumbers;
 }
 function saveAppSettings() {
     localStorage.setItem('tmSettings', JSON.stringify(appSettings));
@@ -143,15 +258,8 @@ function saveAppSettings() {
 
 // Generate ticket number based on settings
 function generateNewTicketNumber() {
-    if (appSettings.sequentialNumbers) {
-        // Next integer after current max
-        let max = 0;
-        usedTicketNumbers.forEach(n => { if (typeof n === 'number' && n > max) max = n; });
-        const next = max + 1 || 1;
-        usedTicketNumbers.add(next);
-        return next;
-    } else {
-        // Default: random two-digit unique (10-99)
+    if (appSettings.randomTwoDigitNumbers) {
+        // Random two-digit unique (10-99)
         let number;
         let guard = 0;
         do {
@@ -161,6 +269,13 @@ function generateNewTicketNumber() {
         } while (usedTicketNumbers.has(number));
         usedTicketNumbers.add(number);
         return number;
+    } else {
+        // Sequential: next integer after current max
+        let max = 0;
+        usedTicketNumbers.forEach(n => { if (typeof n === 'number' && n > max) max = n; });
+        const next = max + 1 || 1;
+        usedTicketNumbers.add(next);
+        return next;
     }
 }
 
@@ -197,11 +312,18 @@ async function loadSteps() {
 // Add a new ticket
 async function addTicket() {
     try {
+        // Choose a default color that is different from the last ticket's color
+        const last = tickets[tickets.length - 1] || null;
+        const lastColor = last ? last.color : null;
+        const baseLast = (typeof lastColor === 'string' && lastColor.startsWith('#')) ? null : lastColor; // ignore custom hex
+        const nextColor = pickNextDefaultColor(baseLast);
+
         const ticketData = {
             ticket_number: generateNewTicketNumber(),
-            color: 'white',
+            color: nextColor,
             notes: '',
-            current_step_id: steps.length > 0 ? steps[0].id : null
+            current_step_id: steps.length > 0 ? steps[0].id : null,
+            order_index: tickets.length // append to end
         };
         
         const response = await fetch(`${API_URL}/tickets`, {
@@ -238,6 +360,23 @@ async function updateTicket(ticketId, updates) {
         console.error('Error updating ticket:', error);
         showError('Failed to update ticket.');
     }
+}
+
+// Debounced notes updater: keeps notes in local state immediately and persists after a short delay
+function updateTicketNotes(ticketId, text) {
+    // Update local state immediately so re-renders preserve the text
+    const t = tickets.find(t => t.id === ticketId);
+    if (t) t.notes = text;
+
+    // Debounce server persistence per ticket
+    if (notesSaveTimers.has(ticketId)) {
+        clearTimeout(notesSaveTimers.get(ticketId));
+    }
+    const timer = setTimeout(() => {
+        updateTicket(ticketId, { notes: text });
+        notesSaveTimers.delete(ticketId);
+    }, 400);
+    notesSaveTimers.set(ticketId, timer);
 }
 
 // Delete ticket
@@ -676,16 +815,17 @@ async function saveAllSteps() {
         hasUnsavedChanges = false;
         originalSteps = JSON.parse(JSON.stringify(steps));
         
-        // Animate save button
+        // Update button state (no unsaved changes) and animate
+        hasUnsavedChanges = false;
+        updateSaveButtonState();
         const btn = document.getElementById('saveStepsBtn');
         const icon = btn.querySelector('i');
-        
         btn.classList.add('saved');
         icon.className = 'bi bi-check-lg';
-        
         setTimeout(() => {
             btn.classList.remove('saved');
             icon.className = 'bi bi-floppy';
+            updateSaveButtonState();
         }, 2000);
     } catch (error) {
         console.error('Error saving steps:', error);
@@ -693,14 +833,23 @@ async function saveAllSteps() {
     }
 }
 
-// Reset save button
-function resetSaveButton() {
+// Update Save Changes button enabled/disabled state and appearance
+function updateSaveButtonState() {
     const btn = document.getElementById('saveStepsBtn');
     const icon = btn?.querySelector('i');
-    if (btn && icon) {
-        btn.classList.remove('saved');
-        btn.className = 'btn btn-primary';
-        icon.className = 'bi bi-floppy';
+    if (!btn || !icon) return;
+    // Always restore default icon when updating state
+    icon.className = 'bi bi-floppy';
+    // Keep any transient 'saved' animation class if present; do not remove here
+    const dirty = !!hasUnsavedChanges || (Array.isArray(changeLog) && changeLog.length > 0);
+    if (dirty) {
+        btn.disabled = false;
+        btn.classList.remove('btn-secondary');
+        btn.classList.add('btn-primary');
+    } else {
+        btn.disabled = true;
+        btn.classList.remove('btn-primary');
+        btn.classList.add('btn-secondary');
     }
 }
 
@@ -716,6 +865,7 @@ function buildConfigurationData() {
     return {
         steps: steps,
         customColors: customColors,
+        tickets: { items: tickets.map((t, i) => ({ ticket_number: t.ticket_number, order_index: (typeof t.order_index === 'number' ? t.order_index : i) })) },
         exportDate: new Date().toISOString()
     };
 }
@@ -742,17 +892,25 @@ function toToml(obj) {
     const lines = [];
     if (obj.steps) {
         lines.push('[steps]');
-        obj.steps.forEach((s, i) => {
+        obj.steps.forEach((s) => {
             lines.push(`[[steps.items]]`);
             lines.push(`id = ${s.id}`);
-            lines.push(`name = "${(s.name || '').replace(/"/g,'\\"')}"`);
+            lines.push(`name = \"${(s.name || '').replace(/\"/g,'\\\"')}\"`);
             lines.push(`order_index = ${s.order_index}`);
         });
     }
-    if (obj.customColors) {
-        lines.push(`customColors = [${obj.customColors.map(c => `"${c}"`).join(', ')}]`);
+    if (obj.tickets && obj.tickets.items) {
+        lines.push('[tickets]');
+        obj.tickets.items.forEach((t) => {
+            lines.push('[[tickets.items]]');
+            lines.push(`ticket_number = ${t.ticket_number}`);
+            lines.push(`order_index = ${t.order_index}`);
+        });
     }
-    if (obj.exportDate) lines.push(`exportDate = "${obj.exportDate}"`);
+    if (obj.customColors) {
+        lines.push(`customColors = [${obj.customColors.map(c => `\"${c}\"`).join(', ')}]`);
+    }
+    if (obj.exportDate) lines.push(`exportDate = \"${obj.exportDate}\"`);
     return lines.join('\n');
 }
 
@@ -881,12 +1039,6 @@ function openExportPreview(type, format) {
     previewModal.show();
 }
 
-function beginImportFlow(type, format) {
-    currentImportContext = { type, format };
-    const input = document.getElementById('importFileInput');
-    input.value = '';
-    input.click();
-}
 
 // Existing export (simple JSON) kept for quick action
 function exportSettings() {
@@ -903,39 +1055,96 @@ function exportSettings() {
     URL.revokeObjectURL(url);
 }
 
-// Import handler (supports configuration and notes, JSON/TOML)
+// Import handler: auto-detects configuration vs notes and JSON vs TOML
 async function importSettings(event) {
     const file = event.target.files[0];
     if (!file) return;
     try {
         const text = await file.text();
-        if (!currentImportContext) {
-            // fallback: configuration JSON
-            const settings = JSON.parse(text);
-            await importConfiguration(settings);
-        } else if (currentImportContext.type === 'configuration') {
-            const settings = currentImportContext.format === 'toml' ? parseConfigurationToml(text) : JSON.parse(text);
-            await importConfiguration(settings);
-        } else if (currentImportContext.type === 'notes') {
-            const notes = currentImportContext.format === 'toml' ? parseNotesToml(text) : JSON.parse(text);
-            await importNotes(notes);
-            showSuccess('Notes imported.');
+        const ext = (file.name.split('.').pop() || '').toLowerCase();
+
+        // Attempt parsing based on extension, with fallback to the other format
+        let parsed = null;
+        let isToml = false;
+        if (ext === 'json') {
+            try { parsed = JSON.parse(text); } catch {}
+            if (parsed == null && window.TOML) { try { parsed = window.TOML.parse(text); isToml = true; } catch {} }
+        } else if (ext === 'toml') {
+            if (window.TOML) { try { parsed = window.TOML.parse(text); isToml = true; } catch {} }
+            if (parsed == null) { try { parsed = JSON.parse(text); isToml = false; } catch {} }
+        } else {
+            try { parsed = JSON.parse(text); } catch {}
+            if (parsed == null && window.TOML) { try { parsed = window.TOML.parse(text); isToml = true; } catch {} }
         }
+
+        if (parsed == null) throw new Error('Unable to parse file as JSON or TOML.');
+
+        // Detection for TOML using existing normalizers
+        if (isToml) {
+            const notesToml = parseNotesToml(text);
+            if (Array.isArray(notesToml)) {
+                await importNotes(notesToml);
+                showSuccess('Notes imported.');
+                return;
+            }
+            const configToml = parseConfigurationToml(text);
+            if (configToml && typeof configToml === 'object' && configToml.steps) {
+                await importConfiguration(configToml);
+                return;
+            }
+            throw new Error('Unrecognized TOML structure.');
+        }
+
+        // Detection for JSON
+        if (Array.isArray(parsed)) {
+            // Assume notes array
+            await importNotes(parsed);
+            showSuccess('Notes imported.');
+            return;
+        } else if (parsed && typeof parsed === 'object') {
+            if (Array.isArray(parsed.notes)) {
+                await importNotes(parsed.notes);
+                showSuccess('Notes imported.');
+                return;
+            }
+            if (Array.isArray(parsed.steps)) {
+                await importConfiguration(parsed);
+                return;
+            }
+            if (Array.isArray(parsed.items)) {
+                const first = parsed.items[0] || {};
+                if (typeof first.ticket_number !== 'undefined' || typeof first.notes !== 'undefined') {
+                    await importNotes(parsed.items);
+                    showSuccess('Notes imported.');
+                    return;
+                } else if (typeof first.id !== 'undefined' || typeof first.name !== 'undefined' || typeof first.order_index !== 'undefined') {
+                    const settings = { steps: parsed.items, customColors: parsed.customColors || [], exportDate: parsed.exportDate || new Date().toISOString() };
+                    await importConfiguration(settings);
+                    return;
+                }
+            }
+        }
+
+        throw new Error('Unrecognized file structure.');
     } catch (error) {
         console.error('Error importing file:', error);
-        showError('Failed to import file. Make sure it is valid.');
+        showError('Failed to import file. Make sure it is valid and contains configuration or notes.');
+    } finally {
+        // Reset file input
+        event.target.value = '';
     }
-    // Reset file input
-    event.target.value = '';
 }
 
 function parseConfigurationToml(text) {
     if (!window.TOML) return null;
     try {
         const parsed = window.TOML.parse(text);
-        const out = { steps: [], customColors: parsed.customColors || [], exportDate: parsed.exportDate || new Date().toISOString() };
+        const out = { steps: [], tickets: { items: [] }, customColors: parsed.customColors || [], exportDate: parsed.exportDate || new Date().toISOString() };
         if (parsed.steps && Array.isArray(parsed.steps.items)) {
             out.steps = parsed.steps.items.map(it => ({ id: it.id || 0, name: it.name || '', order_index: it.order_index || 0 }));
+        }
+        if (parsed.tickets && Array.isArray(parsed.tickets.items)) {
+            out.tickets.items = parsed.tickets.items.map(it => ({ ticket_number: it.ticket_number, order_index: it.order_index || 0 }));
         }
         return out;
     } catch (e) { console.error('TOML parse error', e); return null; }
@@ -952,26 +1161,40 @@ function parseNotesToml(text) {
 }
 
 async function importConfiguration(settings) {
-    if (!settings || !settings.steps) { showError('Invalid configuration.'); return; }
-    showConfirm('Import Settings?', 'This will replace your current steps and custom colors.', async () => {
+    if (!settings || (!settings.steps && !(settings.tickets && settings.tickets.items))) { showError('Invalid configuration.'); return; }
+    showConfirm('Import Settings?', 'This will replace your current steps and custom colors, and update ticket order.', async () => {
         // Import custom colors
         if (settings.customColors) {
             customColors = settings.customColors;
             saveCustomColors();
         }
-        // Clear existing steps
-        for (const step of steps) {
-            await deleteStep(step.id);
+        // Replace steps if provided
+        if (Array.isArray(settings.steps)) {
+            for (const step of steps) {
+                await deleteStep(step.id);
+            }
+            for (const step of settings.steps) {
+                await fetch(`${API_URL}/steps`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: step.name, order_index: step.order_index })
+                });
+            }
+            await loadSteps();
         }
-        // Import new steps
-        for (const step of settings.steps) {
-            await fetch(`${API_URL}/steps`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: step.name, order_index: step.order_index })
-            });
+        // Update ticket ordering if provided
+        if (settings.tickets && Array.isArray(settings.tickets.items)) {
+            // Map ticket_number to order_index
+            const map = new Map(settings.tickets.items.map(it => [it.ticket_number, it.order_index]));
+            // Update all matching tickets
+            for (const t of tickets) {
+                if (map.has(t.ticket_number)) {
+                    const idx = map.get(t.ticket_number);
+                    t.order_index = idx;
+                    await updateTicket(t.id, { order_index: idx });
+                }
+            }
         }
-        await loadSteps();
         await loadTickets();
         showSuccess('Settings imported successfully!');
     });
@@ -1018,6 +1241,7 @@ async function addStep() {
             description: `Added new step`
         });
         hasUnsavedChanges = true;
+        updateSaveButtonState();
         
         renderSteps();
         renderTickets(); // Re-render tickets to update step dropdowns
@@ -1058,6 +1282,7 @@ async function updateStep(stepId, name) {
 async function deleteStep(stepId, skipUndo = false) {
     try {
         const deletedStep = steps.find(s => s.id === stepId);
+        const deletedIndex = steps.findIndex(s => s.id === stepId);
         
         // Save to undo history
         if (!skipUndo && deletedStep) {
@@ -1075,6 +1300,7 @@ async function deleteStep(stepId, skipUndo = false) {
             
             updateUndoButton();
             hasUnsavedChanges = true;
+            updateSaveButtonState();
         }
         
         await fetch(`${API_URL}/steps/${stepId}`, {
@@ -1091,7 +1317,22 @@ async function deleteStep(stepId, skipUndo = false) {
         });
         
         renderSteps();
-        renderTickets();
+
+        // Offer Undo via toast (re-adds step; does not restore prior ticket associations)
+        if (deletedStep && !skipUndo) {
+            showUndoToast('Step removed.', async () => {
+                const response = await fetch(`${API_URL}/steps`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: deletedStep.name, order_index: Math.max(0, deletedIndex) })
+                });
+                if (!response.ok) throw new Error('Failed to undo deletion');
+                await loadSteps();
+                hasUnsavedChanges = true;
+                updateSaveButtonState();
+                ariaAnnounce(`Restored step '${deletedStep.name || ''}'.`);
+            });
+        }
     } catch (error) {
         console.error('Error deleting step:', error);
         showError('Failed to delete step.');
@@ -1224,7 +1465,7 @@ function createTicketHTML(ticket) {
     }
     
     // Color options - preset colors
-    const presetColors = ['white', 'yellow', 'pink', 'blue', 'green', 'purple', 'orange'];
+    const presetColors = DEFAULT_COLORS;
     const presetColorOptionsHTML = presetColors.map(color => `
         <div class="color-option ${ticket.color === color ? 'selected' : ''}" 
              data-color="${color}" 
@@ -1281,8 +1522,8 @@ function createTicketHTML(ticket) {
     `;
 }
 
-// Setup sliding color picker for a ticket
-function setupSlidingColorPicker(row, ticket) {
+// Setup sliding quick color picker for a ticket
+function setupSlidingQuickPicker(row, ticket) {
     const picker = row.querySelector('.quick-color-picker');
     if (!picker) return;
     
@@ -1315,15 +1556,15 @@ function setupSlidingColorPicker(row, ticket) {
     });
     palette.appendChild(customBtn);
     
-    // Add preset colors: hot pink, orange, yellow, blue (in that order)
-    const colors = ['#ff69b4', 'orange', 'yellow', 'blue'];
+    // Add preset colors: pink, orange, yellow, blue (in that order)
+    const colors = DEFAULT_COLORS;
     colors.forEach(color => {
         const circle = document.createElement('div');
         circle.className = 'quick-color-circle';
         circle.dataset.color = color;
         const value = (typeof color === 'string' && color.startsWith('#')) ? color : getColorValue(color);
         circle.style.backgroundColor = value;
-        circle.title = (color.startsWith('#') ? 'Hot pink' : color.charAt(0).toUpperCase() + color.slice(1));
+        circle.title = color.charAt(0).toUpperCase() + color.slice(1);
         
         // Hover preview
         circle.addEventListener('mouseenter', () => {
@@ -1368,23 +1609,25 @@ function setupSlidingColorPicker(row, ticket) {
         return totalPaletteWidth + 28;
     }
 
-    // Auto-collapse after 2 seconds when mouse leaves
-    let collapseTimer;
-    picker.addEventListener('mouseleave', () => {
-        collapseTimer = setTimeout(() => {
-            picker.classList.remove('expanded');
-            paletteWrap.style.maxWidth = '0px';
-            // allow dragging again after collapse
-            row.classList.remove('no-drag');
-        }, 800); // faster collapse after mouse leaves
-    });
-    
+    // Fluid open/close behavior for palette
     picker.addEventListener('mouseenter', () => {
-        clearTimeout(collapseTimer);
+        // Close any other open picker immediately
+        if (activeQuickPicker && activeQuickPicker !== picker) {
+            collapseActivePicker(true);
+        }
+        activeQuickPicker = picker;
+        activePaletteWrap = paletteWrap;
+        ensurePickerPointerTracking();
+
         picker.classList.add('expanded');
         paletteWrap.style.maxWidth = computeExpandedWidth() + 'px';
         // prevent dragging while expanded
         row.classList.add('no-drag');
+    });
+
+    picker.addEventListener('mouseleave', () => {
+        // Schedule a quick collapse as a fallback; document mousemove will also close when far away
+        collapseActivePicker(false);
     });
 }
 
@@ -1434,32 +1677,33 @@ function startEditTicketNumber(ticketId) {
 // Get color hex value
 function getColorValue(color) {
     const colors = {
-        'white': '#ffffff',
-        'yellow': '#fff9c4',
-        'pink': '#fce4ec',
-        'blue': '#e3f2fd',
-        'green': '#e8f5e9',
-        'purple': '#f3e5f5',
-        'orange': '#fff3e0'
+        'white': '#ffffff',       // Legacy default
+        'pink': '#ff69b4',        // Bright hot pink
+        'orange': '#ff8c00',      // Bright dark orange
+        'yellow': '#ffeb3b',      // Bright yellow
+        'blue': '#2196f3'         // Bright blue
     };
-    return colors[color] || '#ffffff';
+    return colors[color] || '#ff69b4';
 }
 
 // Render steps in settings modal
 function renderSteps() {
     const stepsList = document.getElementById('stepsList');
+    if (stepsList) { stepsList.setAttribute('role','list'); stepsList.setAttribute('aria-label','Steps'); }
     
     if (steps.length === 0) {
         stepsList.innerHTML = `
-            <div class="text-muted text-center py-3 empty-steps-message">
-                <p>Click + to add your first step</p>
+            <div class="text-muted text-center py-3 empty-steps-message" role="note">
+                <p>No steps yet. Click Add step to create your first step.</p>
             </div>
         `;
         return;
     }
     
+    const setSize = steps.length;
     stepsList.innerHTML = steps.map((step, index) => `
-        <div class="simple-step-item">
+        <div class="simple-step-item" data-step-id="${step.id}" role="listitem" aria-posinset="${index + 1}" aria-setsize="${setSize}">
+            <span class="simple-step-handle" title="Drag to reorder" draggable="true" tabindex="0" role="button" aria-label="Reorder step"><i class="bi bi-grip-vertical"></i></span>
             <span class="simple-step-number">${index + 1}.</span>
             <input type="text" 
                    value="${step.name || ''}" 
@@ -1467,9 +1711,17 @@ function renderSteps() {
                    data-step-id="${step.id}" 
                    class="simple-step-input"
                    placeholder="Step ${index + 1}">
-            <button class="simple-step-delete" data-step-id="${step.id}" title="Delete step">
-                <i class="bi bi-x"></i>
-            </button>
+            <div class="simple-step-actions">
+                <button class="simple-step-move simple-step-move-up" data-step-id="${step.id}" ${index === 0 ? 'disabled' : ''} aria-label="Move step up" title="Move up">
+                    <i class="bi bi-arrow-up"></i>
+                </button>
+                <button class="simple-step-move simple-step-move-down" data-step-id="${step.id}" ${index === steps.length - 1 ? 'disabled' : ''} aria-label="Move step down" title="Move down">
+                    <i class="bi bi-arrow-down"></i>
+                </button>
+                <button class="simple-step-delete" data-step-id="${step.id}" title="Delete step" aria-label="Delete step">
+                    <i class="bi bi-x"></i>
+                </button>
+            </div>
         </div>
     `).join('');
     
@@ -1478,7 +1730,12 @@ function renderSteps() {
         const input = document.querySelector(`#step-input-${step.id}`);
         const deleteBtn = document.querySelector(`.simple-step-delete[data-step-id="${step.id}"]`);
         
-        // Auto-save on input change
+        // Track edits live to enable Save Changes button
+        input.addEventListener('input', () => {
+            hasUnsavedChanges = true;
+            updateSaveButtonState();
+        });
+        // Auto-save on input change (existing immediate save behavior)
         input.addEventListener('blur', () => {
             updateStep(step.id, input.value.trim());
         });
@@ -1489,11 +1746,228 @@ function renderSteps() {
             }
         });
         
+        // Keyboard-accessible reordering from the input (Alt/Ctrl + Arrow Up/Down)
+        input.addEventListener('keydown', async (e) => {
+            if ((e.altKey || e.ctrlKey) && e.key === 'ArrowUp') {
+                e.preventDefault();
+                await moveStep(step.id, -1);
+            } else if ((e.altKey || e.ctrlKey) && e.key === 'ArrowDown') {
+                e.preventDefault();
+                await moveStep(step.id, 1);
+            }
+        });
+        
+        // Move buttons (click)
+        const upBtn = document.querySelector(`.simple-step-move-up[data-step-id="${step.id}"]`);
+        const downBtn = document.querySelector(`.simple-step-move-down[data-step-id="${step.id}"]`);
+        if (upBtn) upBtn.addEventListener('click', async () => { await moveStep(step.id, -1); });
+        if (downBtn) downBtn.addEventListener('click', async () => { await moveStep(step.id, 1); });
+        
+        // Handle keyboard arrows on the drag handle as well
+        const handle = document.querySelector(`.simple-step-item[data-step-id="${step.id}"] .simple-step-handle`);
+        if (handle) {
+            handle.addEventListener('keydown', async (e) => {
+                if (e.key === 'ArrowUp') { e.preventDefault(); await moveStep(step.id, -1); }
+                else if (e.key === 'ArrowDown') { e.preventDefault(); await moveStep(step.id, 1); }
+            });
+        }
+        
         deleteBtn.addEventListener('click', () => {
             // Delete immediately without confirmation
             deleteStep(step.id);
         });
+        });
+    
+    // Enable drag-and-drop reordering
+    setupStepReordering();
+    
+    // Update Save button state on initial render
+    updateSaveButtonState();
+}
+
+// Step reordering (drag and drop) helpers
+function setupStepReordering() {
+    const list = document.getElementById('stepsList');
+    if (!list) return;
+    const items = Array.from(list.querySelectorAll('.simple-step-item'));
+
+    let draggingStepId = null;
+    let lastIndicatorEl = null;
+    let lastIndicatorPos = null; // 'before' | 'after'
+
+    function clearIndicators() {
+        items.forEach(it => it.classList.remove('reorder-before', 'reorder-after'));
+        lastIndicatorEl = null;
+        lastIndicatorPos = null;
+    }
+
+    items.forEach(item => {
+        const stepId = parseInt(item.dataset.stepId);
+        const handle = item.querySelector('.simple-step-handle');
+        if (!handle) return;
+
+        handle.addEventListener('dragstart', (e) => {
+            draggingStepId = stepId;
+            item.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            try { e.dataTransfer.setData('text/plain', String(stepId)); } catch {}
+        });
+
+        item.addEventListener('dragover', (e) => {
+            if (!draggingStepId) return;
+            e.preventDefault();
+            const rect = item.getBoundingClientRect();
+            const pos = (e.clientY > rect.top + rect.height / 2) ? 'after' : 'before';
+            if (lastIndicatorEl !== item || lastIndicatorPos !== pos) {
+                clearIndicators();
+                item.classList.add(pos === 'after' ? 'reorder-after' : 'reorder-before');
+                lastIndicatorEl = item;
+                lastIndicatorPos = pos;
+            }
+        });
+
+        item.addEventListener('dragleave', () => {
+            // Remove indicator if leaving current item
+            item.classList.remove('reorder-before', 'reorder-after');
+        });
+
+        item.addEventListener('drop', async (e) => {
+            if (!draggingStepId) return;
+            e.preventDefault();
+            const targetId = stepId;
+            if (targetId === draggingStepId) { clearIndicators(); return; }
+            const rect = item.getBoundingClientRect();
+            const pos = (e.clientY > rect.top + rect.height / 2) ? 'after' : 'before';
+
+            const fromIdx = steps.findIndex(s => s.id === draggingStepId);
+            let toIdx = steps.findIndex(s => s.id === targetId);
+            if (fromIdx === -1 || toIdx === -1) { clearIndicators(); return; }
+
+            // Compute insertion index
+            let insertIdx = toIdx + (pos === 'after' ? 1 : 0);
+            if (fromIdx < insertIdx) insertIdx--; // adjust for removal shift
+
+            // Move in array
+            const [moved] = steps.splice(fromIdx, 1);
+            steps.splice(insertIdx, 0, moved);
+
+            // Re-sequence order_index and persist
+            const updates = [];
+            steps.forEach((s, i) => { s.order_index = i; updates.push(updateStepOrder(s.id, i)); });
+            try {
+                await Promise.all(updates);
+            } catch (err) {
+                console.error('Error persisting step order', err);
+                showError('Failed to save new step order.');
+            }
+
+            // Mark as having unsaved changes in the modal UI
+            hasUnsavedChanges = true;
+            if (Array.isArray(changeLog)) { changeLog.push({ type: 'reordered', description: 'Reordered steps' }); }
+            updateSaveButtonState();
+
+            // Announce reorder for a11y
+            const label = (moved?.name || 'Step');
+            const newPos = steps.findIndex(s => s.id === moved.id) + 1;
+            ariaAnnounce(`Moved '${label}' to position ${newPos}.`);
+
+            // Re-render list
+            renderSteps();
+        });
+
+        handle.addEventListener('dragend', () => {
+            draggingStepId = null;
+            item.classList.remove('dragging');
+            clearIndicators();
+        });
     });
+}
+
+async function updateStepOrder(stepId, order_index) {
+    try {
+        await fetch(`${API_URL}/steps/${stepId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ order_index })
+        });
+        const s = steps.find(s => s.id === stepId);
+        if (s) s.order_index = order_index;
+    } catch (error) {
+        console.error('Error updating step order:', error);
+        throw error;
+    }
+}
+
+// Move a step by delta (-1 up, +1 down), persist, and keep focus on the moved step
+async function moveStep(stepId, delta) {
+    const fromIdx = steps.findIndex(s => s.id === stepId);
+    if (fromIdx === -1) return;
+    const toIdx = fromIdx + delta;
+    if (toIdx < 0 || toIdx >= steps.length) return;
+
+    const [moved] = steps.splice(fromIdx, 1);
+    steps.splice(toIdx, 0, moved);
+
+    // Re-sequence and persist all order_index values
+    const updates = [];
+    steps.forEach((s, i) => { s.order_index = i; updates.push(updateStepOrder(s.id, i)); });
+    try {
+        await Promise.all(updates);
+    } catch (err) {
+        console.error('Error persisting step order', err);
+        showError('Failed to save new step order.');
+    }
+
+    // Mark as having unsaved changes in the modal UI
+    hasUnsavedChanges = true;
+    if (Array.isArray(changeLog)) { changeLog.push({ type: 'reordered', description: 'Reordered steps' }); }
+    updateSaveButtonState();
+
+    // Announce reorder for a11y
+    const label = (moved?.name || 'Step');
+    const newPos = steps.findIndex(s => s.id === moved.id) + 1;
+    ariaAnnounce(`Moved '${label}' to position ${newPos}.`);
+
+    // Re-render and restore focus to the moved step's input
+    renderSteps();
+    setTimeout(() => {
+        const input = document.querySelector(`#step-input-${stepId}`);
+        if (input) input.focus();
+    }, 0);
+}
+
+// Announce messages in a live region for accessibility
+function ariaAnnounce(message) {
+    const live = document.getElementById('ariaLiveRegion');
+    if (!live) return;
+    // Clear then set to ensure announcement fires
+    live.textContent = '';
+    setTimeout(() => { live.textContent = String(message || ''); }, 10);
+}
+
+// Lightweight toast with Undo action
+let tmToastTimer = null;
+function showUndoToast(message, onUndo) {
+    if (tmToastTimer) { clearTimeout(tmToastTimer); tmToastTimer = null; }
+    const old = document.getElementById('tmToast');
+    if (old) old.remove();
+    const toast = document.createElement('div');
+    toast.id = 'tmToast';
+    toast.className = 'tm-toast';
+    toast.setAttribute('role','status');
+    toast.setAttribute('aria-live','polite');
+    const span = document.createElement('span');
+    span.textContent = message || 'Action completed.';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = 'Undo';
+    btn.addEventListener('click', async () => {
+        try { if (typeof onUndo === 'function') await onUndo(); } finally { toast.remove(); }
+    });
+    toast.appendChild(span);
+    toast.appendChild(btn);
+    document.body.appendChild(toast);
+    tmToastTimer = setTimeout(() => { toast.remove(); }, 5000);
 }
 
 // Show error message
@@ -1639,6 +2113,20 @@ function bulkDeleteTickets() {
     );
 }
 
+// Helper: find ticket index by id
+function getTicketIndexById(id) {
+    return tickets.findIndex(t => t.id === id);
+}
+
+function moveTicketInArray(fromIdx, toIdx) {
+    if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return false;
+    const [item] = tickets.splice(fromIdx, 1);
+    tickets.splice(toIdx, 0, item);
+    // Reassign order_index sequentially and persist changes
+    tickets.forEach((t, i) => { t.order_index = i; updateTicket(t.id, { order_index: i }); });
+    return true;
+}
+
 // Setup drag and drop for ticket
 function setupDragAndDrop(ticketId) {
     const row = document.getElementById(`ticket-${ticketId}`);
@@ -1667,6 +2155,38 @@ function setupDragAndDrop(ticketId) {
         draggedTicketId = ticketId;
     });
     
+    // Track a visual drop indicator
+    let indicatorRowEl = null;
+    let indicatorPos = null; // 'before' | 'after'
+
+    function clearDropIndicator() {
+        if (indicatorRowEl) {
+            indicatorRowEl.classList.remove('drop-before', 'drop-after');
+            indicatorRowEl = null;
+            indicatorPos = null;
+        }
+    }
+
+    function updateDropIndicator(clientX, clientY) {
+        const deleteZone = document.getElementById('dragDeleteZone');
+        if (deleteZone && deleteZone.classList.contains('active')) {
+            clearDropIndicator();
+            return;
+        }
+        const el = document.elementFromPoint(clientX, clientY);
+        const targetRow = el ? (el.closest && el.closest('.ticket-row')) : null;
+        if (!targetRow) { clearDropIndicator(); return; }
+        // Decide before/after relative to row horizontal center
+        const rect = targetRow.getBoundingClientRect();
+        const pos = clientX > (rect.left + rect.width / 2) ? 'after' : 'before';
+        if (indicatorRowEl !== targetRow || indicatorPos !== pos) {
+            clearDropIndicator();
+            indicatorRowEl = targetRow;
+            indicatorPos = pos;
+            targetRow.classList.add(pos === 'after' ? 'drop-after' : 'drop-before');
+        }
+    }
+
     document.addEventListener('mousemove', (e) => {
         if (!isDraggingTicket || !draggedTicketId) return;
         
@@ -1724,6 +2244,9 @@ function setupDragAndDrop(ticketId) {
             
             // Check proximity to delete zone
             checkDeleteZoneProximity(e.clientX, e.clientY);
+
+            // Update drop indicator under cursor
+            updateDropIndicator(e.clientX, e.clientY);
         }
     });
     
@@ -1738,8 +2261,10 @@ function setupDragAndDrop(ticketId) {
                     dragGhost = null;
                 }
                 
+                let handled = false;
                 // Check if dropped in delete zone
                 if (isOverDeleteZone(e.clientX, e.clientY)) {
+                    handled = true;
                     if (isSelectionMode && selectedTickets.size > 1) {
                         // Multiple tickets - ask for confirmation
                         const count = selectedTickets.size;
@@ -1768,7 +2293,39 @@ function setupDragAndDrop(ticketId) {
                         }
                     }
                 }
+
+                // If not deleted, try to reorder by dropping near another ticket
+                if (!handled && draggedTicketId) {
+                    const el = document.elementFromPoint(e.clientX, e.clientY);
+                    const targetRow = el ? el.closest && el.closest('.ticket-row') : null;
+                    let toIdx = -1;
+                    if (targetRow) {
+                        const targetId = parseInt(targetRow.id.replace('ticket-', ''), 10);
+                        toIdx = getTicketIndexById(targetId);
+                    } else {
+                        // If dropped on empty space, append to end
+                        toIdx = tickets.length - 1;
+                    }
+                    const fromIdx = getTicketIndexById(draggedTicketId);
+                    if (fromIdx !== -1 && toIdx !== -1) {
+                        // If dropping after itself, do nothing
+                        if (fromIdx !== toIdx) {
+                            // Decide before/after depending on horizontal center
+                            let insertIdx = toIdx;
+                            if (targetRow) {
+                                const rect = targetRow.getBoundingClientRect();
+                                const centerX = rect.left + rect.width / 2;
+                                if (e.clientX > centerX) insertIdx = toIdx + (fromIdx < toIdx ? 0 : 1);
+                                else insertIdx = toIdx + (fromIdx < toIdx ? -1 : 0);
+                                insertIdx = Math.max(0, Math.min(tickets.length - 1, insertIdx));
+                            }
+                            moveTicketInArray(fromIdx, insertIdx);
+                            renderTickets();
+                        }
+                    }
+                }
                 
+                clearDropIndicator();
                 endDragMode();
             }
             
@@ -1800,6 +2357,10 @@ function endDragMode() {
     // Remove dragging class from all tickets
     document.querySelectorAll('.ticket-row.dragging').forEach(row => {
         row.classList.remove('dragging', 'drag-over-delete');
+    });
+    // Clear any drop indicators
+    document.querySelectorAll('.ticket-row.drop-before, .ticket-row.drop-after').forEach(row => {
+        row.classList.remove('drop-before', 'drop-after');
     });
 }
 

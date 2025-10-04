@@ -62,32 +62,44 @@
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <h6 class="text-muted mb-0">Configure Steps</h6>
                     </div>
-                    <!-- Ticket Numbering Settings -->
-                    <div class="mb-3">
+                    <!-- Steps -->
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <h6 class="mb-0">Steps</h6>
+                    </div>
+                    <p class="text-muted small mb-2">Drag to reorder; press Alt/⌥ or Ctrl + ↑/↓ to reorder with the keyboard.</p>
+                    <div id="stepsList" class="steps-list" role="list" aria-label="Steps">
+                        <!-- Steps will be added here -->
+                    </div>
+                    <div class="d-flex justify-content-end mt-2">
+                        <button class="btn btn-outline-secondary btn-action" id="addStepBtn" title="Add step">
+                            <i class="bi bi-plus-circle"></i> Add Step
+                        </button>
+                    </div>
+
+                    <!-- Ticket numbering -->
+                    <div class="mt-4">
+                        <h6 class="mb-2">Ticket numbering</h6>
+                        <div class="form-text mb-2">Choose how ticket numbers are assigned.</div>
                         <div class="form-check form-switch">
                             <input class="form-check-input" type="checkbox" id="toggleCustomNumbering">
-                            <label class="form-check-label" for="toggleCustomNumbering">Allow custom ticket numbers</label>
+<label class="form-check-label" for="toggleCustomNumbering">Custom Ticket Numbers</label>
                         </div>
                         <div class="form-check form-switch mt-2">
                             <input class="form-check-input" type="checkbox" id="toggleSequentialNumbers">
-                            <label class="form-check-label" for="toggleSequentialNumbers">Assign new tickets sequentially (1, 2, 3...)</label>
+                            <label class="form-check-label" for="toggleSequentialNumbers">Assign new tickets random two-digit numbers (10-99)</label>
                         </div>
                     </div>
-                    <div id="stepsList">
-                        <!-- Steps will be added here -->
-                    </div>
-                    <button class="btn btn-outline-secondary btn-add-step-simple" id="addStepBtn">
-                        <i class="bi bi-plus-circle"></i>
-                    </button>
-                    
-                    <!-- Save Button -->
-                    <div class="text-center mt-3">
-                        <button class="btn btn-primary" id="saveStepsBtn">
+
+                    <!-- Live region for announcements -->
+                    <div id="ariaLiveRegion" class="visually-hidden" aria-live="polite"></div>
+
+                    <!-- Sticky footer actions -->
+                    <div class="settings-footer d-flex justify-content-between align-items-center mt-4">
+                        <button class="btn btn-outline-secondary" id="settingsCancelBtn">Cancel</button>
+                        <button class="btn btn-secondary btn-action" id="saveStepsBtn" disabled>
                             <i class="bi bi-floppy"></i> Save Changes
                         </button>
                     </div>
-                    
-                    <div class="modal-actions mt-4"></div>
                 </div>
             </div>
         </div>
@@ -103,6 +115,13 @@
                 </div>
                 <div class="modal-body">
                     <div class="d-flex gap-2">
+                        <!-- Import button (auto-detects file type) -->
+                        <div class="flex-fill">
+                            <button class="btn btn-outline-primary w-100" id="importSettingsBtn">
+                                <i class="bi bi-upload"></i> Import
+                            </button>
+                        </div>
+                        
                         <!-- Export split button -->
                         <div class="btn-group dropup flex-fill export-group">
                             <button class="btn btn-outline-success w-100" id="exportSettingsBtn">
@@ -111,8 +130,8 @@
                             <button type="button" class="btn btn-outline-success dropdown-toggle dropdown-toggle-split export-menu-toggle" data-bs-toggle="dropdown" aria-expanded="false" title="More export options">
                                 <i class="bi bi-chevron-up"></i>
                             </button>
-<div class="dropdown-menu p-3 export-menu">
-                                <div class="fw-bold text-success mb-2">Export</div>
+                            <div class="dropdown-menu p-3 export-menu">
+                                <div class="fw-bold text-success mb-2">Preview Export</div>
                                 <div class="d-flex gap-4">
                                     <div>
                                         <div class="fw-semibold mb-2">Configuration</div>
@@ -124,32 +143,6 @@
                                         <button class="dropdown-item export-option" data-export-type="notes" data-export-format="csv">CSV</button>
                                         <button class="dropdown-item export-option" data-export-type="notes" data-export-format="pdf">PDF</button>
                                         <button class="dropdown-item export-option" data-export-type="notes" data-export-format="docx">DOCX</button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Import split button -->
-                        <div class="btn-group dropup flex-fill import-group">
-                            <button class="btn btn-outline-primary w-100" id="importSettingsBtn">
-                                <i class="bi bi-upload"></i> Import
-                            </button>
-                            <button type="button" class="btn btn-outline-primary dropdown-toggle dropdown-toggle-split import-menu-toggle" data-bs-toggle="dropdown" aria-expanded="false" title="More import options">
-                                <i class="bi bi-chevron-up"></i>
-                            </button>
-<div class="dropdown-menu p-3 import-menu">
-                                <div class="fw-bold text-primary mb-2">Import</div>
-                                <div class="d-flex gap-4">
-                                    <div>
-                                        <div class="fw-semibold mb-2">Configuration</div>
-                                        <button class="dropdown-item import-option" data-import-type="configuration" data-import-format="json">JSON</button>
-                                        <button class="dropdown-item import-option" data-import-type="configuration" data-import-format="toml">TOML</button>
-                                    </div>
-                                    <div>
-                                        <div class="fw-semibold mb-2">Notes</div>
-                                        <div class="small text-muted mb-2">Ticket #, Step, Notes</div>
-                                        <button class="dropdown-item import-option" data-import-type="notes" data-import-format="json">JSON</button>
-                                        <button class="dropdown-item import-option" data-import-type="notes" data-import-format="toml">TOML</button>
                                     </div>
                                 </div>
                             </div>

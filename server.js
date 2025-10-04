@@ -34,11 +34,28 @@ function initDatabase() {
             color TEXT NOT NULL DEFAULT 'white',
             notes TEXT,
             current_step_id INTEGER,
+            order_index INTEGER NOT NULL DEFAULT 0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (current_step_id) REFERENCES steps(id) ON DELETE SET NULL
         )
     `);
+
+    // Ensure order_index exists (for existing DBs)
+    try {
+        const cols = db.prepare("PRAGMA table_info(tickets)").all();
+        const hasOrder = cols.some(c => c.name === 'order_index');
+        if (!hasOrder) {
+            db.exec("ALTER TABLE tickets ADD COLUMN order_index INTEGER NOT NULL DEFAULT 0");
+            // Initialize order_index sequentially by ticket_number
+            const all = db.prepare('SELECT id FROM tickets ORDER BY ticket_number ASC').all();
+            const update = db.prepare('UPDATE tickets SET order_index = ? WHERE id = ?');
+            let idx = 0;
+            for (const row of all) update.run(idx++, row.id);
+        }
+    } catch (e) {
+        // ignore
+    }
     
     console.log('Database initialized successfully');
 }
@@ -52,7 +69,7 @@ initDatabase();
 // Get all tickets
 app.get('/api/tickets', (req, res) => {
     try {
-        const tickets = db.prepare('SELECT * FROM tickets ORDER BY ticket_number ASC').all();
+        const tickets = db.prepare('SELECT * FROM tickets ORDER BY order_index ASC, ticket_number ASC').all();
         res.json(tickets);
     } catch (error) {
         console.error('Error fetching tickets:', error);
@@ -77,18 +94,26 @@ app.get('/api/tickets/:id', (req, res) => {
 // Create new ticket
 app.post('/api/tickets', (req, res) => {
     try {
-        const { ticket_number, color, notes, current_step_id } = req.body;
+        const { ticket_number, color, notes, current_step_id, order_index } = req.body;
+
+        // Determine next order_index if not provided
+        let idx = order_index;
+        if (typeof idx !== 'number') {
+            const row = db.prepare('SELECT MAX(order_index) as m FROM tickets').get();
+            idx = (row?.m ?? -1) + 1;
+        }
         
         const stmt = db.prepare(`
-            INSERT INTO tickets (ticket_number, color, notes, current_step_id)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO tickets (ticket_number, color, notes, current_step_id, order_index)
+            VALUES (?, ?, ?, ?, ?)
         `);
         
         const result = stmt.run(
             ticket_number,
             color || 'white',
             notes || '',
-            current_step_id || null
+            current_step_id || null,
+            idx
         );
         
         const newTicket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(result.lastInsertRowid);
@@ -102,7 +127,7 @@ app.post('/api/tickets', (req, res) => {
 // Update ticket
 app.put('/api/tickets/:id', (req, res) => {
     try {
-        const { color, notes, current_step_id, ticket_number } = req.body;
+        const { color, notes, current_step_id, ticket_number, order_index } = req.body;
         const updates = [];
         const values = [];
         
@@ -121,6 +146,10 @@ app.put('/api/tickets/:id', (req, res) => {
         if (ticket_number !== undefined) {
             updates.push('ticket_number = ?');
             values.push(ticket_number);
+        }
+        if (order_index !== undefined) {
+            updates.push('order_index = ?');
+            values.push(order_index);
         }
         
         updates.push('updated_at = CURRENT_TIMESTAMP');
