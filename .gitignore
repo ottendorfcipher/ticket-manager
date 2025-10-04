@@ -99,4 +99,9 @@ temp/
 # Merge/patch leftovers
 *.orig
 *.rej
+
+# Local generated test/preview files
+__tmp_*.html
+test-import-*.json
+test-import-*.toml
 # === END: Additional ignores ===
